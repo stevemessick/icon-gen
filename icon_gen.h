@@ -16,6 +16,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <regex>
+#include <sstream>
+#include <string>
+
 #define DEBUG
 
 #define CODEPOINT 0xf2bb
@@ -43,9 +52,9 @@
 #define MAX_ICON_NAME_LEN 100
 
 struct font_families {
-  char *family_name;
-  char *font_path;
-  struct font_families *next;
+  std::string family_name;
+  std::string font_path;
+  std::shared_ptr<font_families> next;
 };
 
 #endif /* icon_gen_h */
