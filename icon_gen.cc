@@ -9,55 +9,67 @@
 #include "icon_gen.h"
 #define FONT_FILE C_FONT_FILE
 
-int gen_all_previews(char *fontfile, char *codepointsfile, FT_Face ft_face,
-                     hb_font_t *hb_font);
-int gen_preview(char *glyph_name, uint16_t *codepoint, FT_Face ft_face,
+using namespace std;
+
+shared_ptr<font_families> read_font_files(ifstream &file);
+int check_error_bits(ifstream *f);
+int gen_all_previews(const char *fontfile, const char *codepointsfile,
+                     FT_Face ft_face, hb_font_t *hb_font);
+void process_icon(const string &dir, const string &glyph_name,
+                  unsigned int codepoint, FT_Face ft_face, hb_font_t *hb_font);
+void process_font_family(ifstream &file, std::shared_ptr<font_families> &info);
+int gen_preview(char *glyph_name, uint16_t *utf16, FT_Face ft_face,
                 hb_font_t *hb_font);
-struct font_families *read_font_files(FILE *stream);
-void process_font_family(FILE *stream, struct font_families *info);
-void process_icon(char *dir, char *name, unsigned int codepoint,
-                  FT_Face ft_face, hb_font_t *hb_font);
+
+const string out_path = OUT_PATH;
+const string separator = SEPARATOR;
+const string icon_previews = ICON_PREVIEWS;
+const string dot_png = DOT_PNG;
 
 int main(int argc, char **argv) {
-  char *fontfile = FONT_FILE;
-  char *codepointsfile = C_CODEPOINTS_FILE;
+  string fontfile = FONT_FILE;
 
   if (argc > 1) {
-    codepointsfile = argv[1];
-    FILE *stream = fopen(codepointsfile, "r");
-    struct font_families *info = read_font_files(stream);
-    if (info < 0) {
-      fprintf(stdout, "error %p\n", info);
+    string codepointsfile = argv[1];
+    ifstream file;
+    file.open(codepointsfile);
+    auto info = read_font_files(file);
+    if (info == NULL) {
+      fprintf(stdout, "error\n");
       exit(info && -1);
     }
-    struct font_families *head = info;
-    int count;
-    fscanf(stream, "%i", &count);
+    auto head = info;
+    string line;
+    getline(file, line);
+    if (check_error_bits(&file)) {
+      return -1;
+    }
+    int count = stoi(line);
     for (int index = 0; index < count; index++) {
       fprintf(stdout, "processing: %i\n", index);
-      process_font_family(stream, head);
+      process_font_family(file, head);
       info = info->next;
     }
     info = head;
     fprintf(stdout, "X\n");
-    struct font_families *next = info;
+    auto next = info;
     while (next != NULL) {
       info = next;
       next = info->next;
-      free(info->family_name);
-      free(info->font_path);
-      free(info);
+      delete (&info);
     }
-    fclose(stream);
+    file.close();
     exit(0);
   }
+  string codepointsfile = C_CODEPOINTS_FILE;
   /* Initialize FreeType and create FreeType font face. */
   FT_Library ft_library;
   FT_Face ft_face;
   FT_Error ft_error;
 
   if ((ft_error = FT_Init_FreeType(&ft_library))) abort();
-  if ((ft_error = FT_New_Face(ft_library, fontfile, 0, &ft_face))) abort();
+  if ((ft_error = FT_New_Face(ft_library, fontfile.c_str(), 0, &ft_face)))
+    abort();
   if ((ft_error =
            FT_Set_Char_Size(ft_face, FONT_SIZE * 64, FONT_SIZE * 64, 0, 0)))
     abort();
@@ -67,7 +79,8 @@ int main(int argc, char **argv) {
   hb_font = hb_ft_font_create(ft_face, NULL);
 
   int result;
-  result = gen_all_previews(fontfile, codepointsfile, ft_face, hb_font);
+  result = gen_all_previews(fontfile.c_str(), codepointsfile.c_str(), ft_face,
+                            hb_font);
 
   hb_font_destroy(hb_font);
 
@@ -79,72 +92,87 @@ int main(int argc, char **argv) {
 
 // Returns a linked list of struct font_info.
 // It must be freed.
-struct font_families *read_font_files(FILE *stream) {
-  char line[200];
+shared_ptr<font_families> read_font_files(ifstream &file) {
   int result;
+  string line;
 
-  if (stream == NULL) {
-    return (struct font_families *)-2;
+  if (!file.is_open()) return NULL;
+  getline(file, line);
+  if (check_error_bits(&file)) {
+    return NULL;
   }
-  if (fgets(line, 100, stream) == NULL) {
-    return (struct font_families *)-3;
+  getline(file, line);
+  if (check_error_bits(&file)) {
+    return NULL;
   }
-  if (fgets(line, 100, stream) == NULL) {
-    return (struct font_families *)-3;
+  getline(file, line);
+  if (check_error_bits(&file)) {
+    return NULL;
   }
-  int count = 0;
-  result = fscanf(stream, "%i", &count);
-  if (ferror(stream)) {
-    return (struct font_families *)-4;
-  }
-  struct font_families *info = malloc(sizeof *info);
-  struct font_families *head = info;
+  int count = stoi(line);
+  auto info = make_shared<font_families>();
+  auto head = info;
   for (int i = 0; i < count; i++) {
-    if (fgets(line, 100, stream) == NULL) {
-      return (struct font_families *)-5;
+    getline(file, line);
+    if (check_error_bits(&file)) {
+      return NULL;
     }
-    char *name = malloc(MAX_FAMILY_NAME_LEN * sizeof(char *));
-    name[MAX_FAMILY_NAME_LEN - 1] = '\0';
-    for (int i = 0; i < MAX_FAMILY_NAME_LEN - 1; i++) {
-      name[i] = fgetc(stream);
-      if (name[i] == ':') {
-        name[i] = '\0';
-        break;
-      }
+    // Parse <font-family>:<path-to-font-file>
+    int n = 2;
+    int index = line.find(": ");
+    if (index < 0) {
+      index = line.find(':');
+      n = 1;
     }
-    if (strlen(name) == MAX_FAMILY_NAME_LEN - 1) {
-      fprintf(stderr, "Family name not read");
-      exit(-1);
-    }
-    char *path = malloc(MAX_PATH_LEN * sizeof(char *));
-    fscanf(stream, "%s", path);
-    if (ferror(stream)) {
-      return (struct font_families *)-6;
-    }
-    fprintf(stdout, "read: %s, %s\n", name, path);
-    if (ferror(stream)) {
-      return (struct font_families *)-7;
-    }
+    string name = line.substr(0, index);
+    string path = line.substr(index + n);
+    fprintf(stdout, "read: %s, %s\n", name.c_str(), path.c_str());
+    // if (ferror(stream)) {
+    //   return (struct font_families *)-7;
+    // }
     info->family_name = name;
     info->font_path = path;
     if (i < count - 1) {
-      info->next = malloc(sizeof *info);
+      info->next = make_shared<font_families>();
       info = info->next;
     }
   }
   info->next = NULL;
-  fscanf(stream, "%*s");  // skip "codepoints"
-  if (ferror(stream)) {
-    return (struct font_families *)-8;
+  getline(file, line);  // skip "codepoints"
+  if (check_error_bits(&file)) {
+    return NULL;
   }
   return head;
 }
 
-char *find_path(char *name, struct font_families *info) {
-  struct font_families *head = info;
+// From:
+// https://gehrcke.de/2011/06/reading-files-in-c-using-ifstream-dealing-correctly-with-badbit-failbit-eofbit-and-perror/
+int check_error_bits(ifstream *f) {
+  int stop = 0;
+  if (f->eof()) {
+    perror("stream eofbit. error state");
+    // EOF after std::getline() is not the criterion to stop processing
+    // data: In case there is data between the last delimiter and EOF,
+    // getline() extracts it and sets the eofbit.
+    stop = 0;
+  }
+  if (f->fail()) {
+    perror("stream failbit (or badbit). error state");
+    stop = 1;
+  }
+  if (f->bad()) {
+    perror("stream badbit. error state");
+    stop = 1;
+  }
+  return stop;
+}
+
+string find_path(const string &name, shared_ptr<font_families> &info) {
+  shared_ptr<font_families> head = info;
   while (info != NULL) {
-    fprintf(stdout, "compare: %s %s\n", name, info->family_name);
-    if (strcmp(name, info->family_name) == 0) {
+    fprintf(stdout, "compare: %s %s\n", name.c_str(),
+            info->family_name.c_str());
+    if (name == info->family_name) {
       return info->font_path;
     }
     info = info->next;
@@ -155,58 +183,44 @@ char *find_path(char *name, struct font_families *info) {
   return NULL;
 }
 
-void mkdirs(char *path) {
-  char *sep = strrchr(path, SEPARATOR[0]);
-  if (sep != NULL) {
-    *sep = 0;
-    mkdirs(path);
-    *sep = SEPARATOR[0];
-  }
-  if (mkdir(path, 0755) && errno != EEXIST)
-    printf("error while trying to create '%s'\n%m\n", path);
-}
-
-char *make_output_dir(char *path, char *family_name) {
-  char *n = strstr(path, "pub.dev/") + 8;  // strlen("pub.dev/")
-  char *p = strtok(n, "/");                // modifies path
-  char *package = strtok(p, "-");
-  char *out_dir = malloc(strlen(OUT_PATH) + strlen(package) +
-                         strlen(ICON_PREVIEWS) + strlen(family_name) + 3);
-  snprintf(out_dir, MAX_PATH_LEN, "%s%s%s%s%s%s%s", OUT_PATH, package,
-           SEPARATOR, ICON_PREVIEWS, SEPARATOR, family_name, SEPARATOR);
-  mkdirs(out_dir);
-  fprintf(stdout, "%s\n", path);
-  exit(0);
+string make_output_dir(const string &path, const string &family_name) {
+  int start = path.find("pub.dev/") + 8;
+  int end = path.find('-', start);
+  string pack = path.substr(start, end - start);
+  string out_dir = out_path + pack + separator + icon_previews + separator +
+                   family_name + separator;
+  namespace fs = std::filesystem;
+  fs::create_directories(out_dir);
   return out_dir;
 }
 
-void process_font_family(FILE *stream, struct font_families *info) {
-  char *family_name = malloc(MAX_FAMILY_NAME_LEN * sizeof(char));
-  fscanf(stream, "%*s");
-  char *path = malloc(MAX_PATH_LEN * sizeof(char));
-  fscanf(stream, "%s", path);
-  fscanf(stream, "%s", family_name);
-  family_name[strlen(family_name) - 1] = '\0';
-  if (info->next == NULL && strcmp(family_name, "null") == 0) {
+void process_font_family(ifstream &file, std::shared_ptr<font_families> &info) {
+  string line;
+  getline(file, line);  // skip family name
+  string path;
+  getline(file, path);
+  getline(file, line);  // <family-name>: <package-name>
+  int index = line.find(": ");
+  if (index < 0) index = line.find(":");
+  string family_name = line.substr(0, index);
+  if (info->next == NULL && family_name == "null") {
     family_name = info->family_name;
   }
-  char *fontfile = find_path(family_name, info);
-  if (fontfile == NULL) {
-    fprintf(stderr, "Font family not found: %s\n", family_name);
-    exit(-1);
-  }
-  char *dir = make_output_dir(path, family_name);
-  fprintf(stdout, "output: %s\n", dir);
-  free(path);
-  free(family_name);
-  fscanf(stream, "%*s");  // skip package
-  /* Initialize FreeType and create FreeType font face. */
+  string fontfile = find_path(family_name, info);
+  // if (fontfile == (string)NULL) {
+  //   fprintf(stderr, "Font family not found: %s\n", family_name.c_str());
+  //   exit(-1);
+  // }
+  fprintf(stdout, "fontfile: %s\n", fontfile.c_str());
+  string dir = make_output_dir(path, family_name);
+  fprintf(stdout, "output: %s\n", dir.c_str());
   FT_Library ft_library;
   FT_Face ft_face;
   FT_Error ft_error;
 
   if ((ft_error = FT_Init_FreeType(&ft_library))) abort();
-  if ((ft_error = FT_New_Face(ft_library, fontfile, 0, &ft_face))) abort();
+  if ((ft_error = FT_New_Face(ft_library, fontfile.c_str(), 0, &ft_face)))
+    abort();
   if ((ft_error =
            FT_Set_Char_Size(ft_face, FONT_SIZE * 64, FONT_SIZE * 64, 0, 0)))
     abort();
@@ -215,37 +229,41 @@ void process_font_family(FILE *stream, struct font_families *info) {
   hb_font_t *hb_font;
   hb_font = hb_ft_font_create(ft_face, NULL);
 
-  int count;
-  fscanf(stream, "%i", &count);
+  getline(file, line);
+  fprintf(stdout, "count: %s\n", line.c_str());
+  int count = stoi(line);
   for (int i = 0; i < count; i++) {
-    char *name = malloc(MAX_ICON_NAME_LEN * sizeof(char));
-    unsigned int codepoint;
-    fscanf(stream, "%s", name);
-    name[strlen(name) - 1] = '\0';
-    fscanf(stream, "%i", &codepoint);
-    fprintf(stdout, "%s: %i\n", name, codepoint);
+    getline(file, line);
+    int index = line.find(": ");
+    int n = 2;
+    if (index < 0) {
+      index = line.find(":");
+      n = 1;
+    }
+    string name = line.substr(0, index);
+    string code = line.substr(index + n);
+    int codepoint = stoi(code);
+    // fprintf(stdout, "%s: %i\n", name.c_str(), codepoint);
     process_icon(dir, name, codepoint, ft_face, hb_font);
-    free(name);
   }
-  free(dir);
   hb_font_destroy(hb_font);
 
   FT_Done_Face(ft_face);
   FT_Done_FreeType(ft_library);
 }
 
-void process_icon(char *dir, char *glyph_name, unsigned int codepoint,
-                  FT_Face ft_face, hb_font_t *hb_font) {
+void process_icon(const string &dir, const string &glyph_name,
+                  unsigned int codepoint, FT_Face ft_face, hb_font_t *hb_font) {
   /* Create hb-buffer and populate. */
   hb_buffer_t *hb_buffer;
   hb_buffer = hb_buffer_create();
   if (codepoint <= 0xFFFF) {
-    uint16_t *utf16 = malloc(sizeof(uint32_t));
+    uint16_t *utf16 = (uint16_t *)malloc(sizeof(uint32_t));
     utf16[0] = codepoint;
     hb_buffer_add_utf16(hb_buffer, utf16, -1, 0, -1);
     free(utf16);
   } else {
-    uint32_t *utf32 = malloc(sizeof(uint32_t));
+    uint32_t *utf32 = (uint32_t *)malloc(sizeof(uint32_t));
     utf32[0] = (codepoint & 0xFFFF0000 >> 16) | (codepoint & 0x0000FFFF);
     hb_buffer_add_utf32(hb_buffer, utf32, -1, 0, -1);
     free(utf32);
@@ -338,26 +356,20 @@ void process_icon(char *dir, char *glyph_name, unsigned int codepoint,
   cairo_show_glyphs(cr, cairo_glyphs, len);
   cairo_glyph_free(cairo_glyphs);
 
-  char *out_file_name;
-  out_file_name = (char *)malloc(
-      (strlen(dir) + strlen(glyph_name) + strlen(DOT_PNG) + 1) * sizeof(char));
-  strcat(out_file_name, dir);
-  strcat(out_file_name, glyph_name);
-  strcat(out_file_name, DOT_PNG);
-  fprintf(stdout, "file: %s\n", out_file_name);
+  string out_file_path = dir + glyph_name + dot_png;
+  // fprintf(stdout, "file: %s\n", out_file_path.c_str());
 
-  cairo_surface_write_to_png(cairo_surface, out_file_name);
+  cairo_surface_write_to_png(cairo_surface, out_file_path.c_str());
 
   cairo_font_face_destroy(cairo_face);
   cairo_destroy(cr);
   cairo_surface_destroy(cairo_surface);
-  free(out_file_name);
 
   hb_buffer_destroy(hb_buffer);
 }
 
-int gen_all_previews(char *fontfile, char *codepointsfile, FT_Face ft_face,
-                     hb_font_t *hb_font) {
+int gen_all_previews(const char *fontfile, const char *codepointsfile,
+                     FT_Face ft_face, hb_font_t *hb_font) {
   int result;
   char glyph_name[256];
   char comment[100];
@@ -376,7 +388,7 @@ int gen_all_previews(char *fontfile, char *codepointsfile, FT_Face ft_face,
   if (fgets(comment, 100, stream) == NULL) {
     return -3;
   }
-  uint16_t *utf16 = malloc(sizeof(uint16_t));
+  uint16_t *utf16 = (uint16_t *)malloc(sizeof(uint16_t));
   while (1) {
     if (fgets(comment, 100, stream) == NULL) {
       if (!feof(stream)) {
