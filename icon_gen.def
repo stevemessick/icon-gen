@@ -1,0 +1,4 @@
+LIBRARY structs
+EXPORTS
+  gen_icon
+  free_string

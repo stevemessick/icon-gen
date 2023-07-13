@@ -35,3 +35,10 @@ icon_gen.dSYM
 *.exe
 *.out
 *.app
+
+build
+icon_ba.*
+icon_cl.*
+sample.*
+glyph.*
+CMakeLists-glyph.txt

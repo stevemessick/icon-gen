@@ -1,5 +1,5 @@
 HB_PKGS = harfbuzz
-FT_PKGS = harfbuzz cairo-ft freetype2
+FT_PKGS = harfbuzz cairo-ft freetype2 libpng
 
 HB_CFLAGS = `pkg-config --cflags $(HB_PKGS)`
 HB_LDFLAGS = `pkg-config --libs $(HB_PKGS)` -lm
@@ -7,7 +7,10 @@ HB_LDFLAGS = `pkg-config --libs $(HB_PKGS)` -lm
 FT_CFLAGS = `pkg-config --cflags $(FT_PKGS)`
 FT_LDFLAGS = `pkg-config --libs $(FT_PKGS)` -lm
 
-all: icon_gen
+all: icon_gen glyph
 
 icon_gen: icon_gen.cc icon_gen.h
 	clang++ -std=c++17 -Wc++11-extensions -g -o icon_gen icon_gen.cc $(FT_CFLAGS) $(FT_LDFLAGS)
+
+glyph: glyph.c
+	clang++ -std=c++17 -g -o glyph glyph.c $(FT_CFLAGS) -I../skia ../skia/out/release/libskia.a $(FT_LDFLAGS)
