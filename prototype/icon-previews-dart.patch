@@ -1,0 +1,2352 @@
+diff --git a/pkg/analysis_server/ffi/icon_gen/.gitignore b/pkg/analysis_server/ffi/icon_gen/.gitignore
+new file mode 100644
+index 00000000000..e0d05e7f400
+--- /dev/null
++++ b/pkg/analysis_server/ffi/icon_gen/.gitignore
+@@ -0,0 +1,7 @@
++CMakeFiles
++cmake_install.cmake
++CMakeCache.txt
++Makefile
++*.dylib
++icon_gen_test
++!CMakeLists.txt
+diff --git a/pkg/analysis_server/ffi/icon_gen/CMakeLists.txt b/pkg/analysis_server/ffi/icon_gen/CMakeLists.txt
+new file mode 100644
+index 00000000000..ea90c08e9aa
+--- /dev/null
++++ b/pkg/analysis_server/ffi/icon_gen/CMakeLists.txt
+@@ -0,0 +1,52 @@
++set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
++cmake_minimum_required(VERSION 3.10.2)
++set(CMAKE_CXX_STANDARD 17)
++set(CMAKE_CXX_STANDARD_REQUIRED True)
++
++project(icon_gen VERSION 1.0.0 LANGUAGES C CXX)
++add_library(icon_gen SHARED icon_gen.cc icon_gen.def)
++add_executable(icon_gen_test icon_gen.cc)
++
++find_package(HarfBuzz REQUIRED)
++find_package(Cairo REQUIRED)
++find_package(Freetype REQUIRED)
++
++target_link_libraries (icon_gen PUBLIC m
++  ${HARFBUZZ_LIBRARY}
++  ${CAIRO_LIBRARY}
++  ${FREETYPE_LIBRARY_RELEASE})
++target_link_libraries (icon_gen_test PUBLIC m
++  ${HARFBUZZ_LIBRARY}
++  ${CAIRO_LIBRARY}
++  ${FREETYPE_LIBRARY_RELEASE})
++
++set_target_properties(icon_gen PROPERTIES
++    PUBLIC_HEADER icon_gen.h
++    VERSION ${PROJECT_VERSION}
++    SOVERSION 1
++    OUTPUT_NAME "icon_gen"
++    XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
++    XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
++)
++
++include_directories(
++  "../../../../../../../homebrew/Cellar/libffi/3.4.4/include"
++  "../../../../../../../homebrew/Cellar/harfbuzz/7.1.0/include/harfbuzz"
++  "../../../../../../../homebrew/Cellar/cairo/1.16.0_5/include/cairo"
++  "../../../../../../../homebrew/Cellar/glib/2.76.1/include"
++  "../../../../../../../homebrew/Cellar/glib/2.76.1/include/glib-2.0"
++  "../../../../../../../homebrew/Cellar/glib/2.76.1/lib/glib-2.0/include"
++  "../../../../../../../homebrew/opt/gettext/include"
++  "../../../../../../../homebrew/Cellar/pcre/8.45/include"
++  "../../../../../../../homebrew/Cellar/pixman/0.42.2/include/pixman-1"
++  "../../../../../../../homebrew/Cellar/fontconfig/2.14.2/include"
++  "../../../../../../../homebrew/Cellar/libpng/1.6.39/include/libpng16"
++  "../../../../../../../homebrew/Cellar/libxcb/1.15_1/include"
++  "../../../../../../../homebrew/Cellar/libxrender/0.9.11/include"
++  "../../../../../../../homebrew/Cellar/libxext/1.3.5/include"
++  "../../../../../../../homebrew/Cellar/libx11/1.8.4/include"
++  "../../../../../../../homebrew/Cellar/libxau/1.0.11/include"
++  "../../../../../../../homebrew/Cellar/libxdmcp/1.1.4/include"
++  "../../../../../../../homebrew/opt/freetype/include/freetype2"
++  "../../../../../../../homebrew/Cellar/xorgproto/2022.2/include"
++)
+\ No newline at end of file
+diff --git a/pkg/analysis_server/ffi/icon_gen/cmake/FindCairo.cmake b/pkg/analysis_server/ffi/icon_gen/cmake/FindCairo.cmake
+new file mode 100644
+index 00000000000..b17aa1e9492
+--- /dev/null
++++ b/pkg/analysis_server/ffi/icon_gen/cmake/FindCairo.cmake
+@@ -0,0 +1,43 @@
++# Library
++find_library(CAIRO_LIBRARY
++  NAMES Cairo
++  HINTS ${PC_CAIRO_LIBDIR}
++  ${PC_CAIRO_LIBRARY_DIRS}
++)
++find_package(PkgConfig)
++pkg_check_modules(PC_CAIRO cairo) # FIXME: After we require CMake 2.8.2 we can pass QUIET to this call.
++find_path(CAIRO_INCLUDE_DIRS
++  NAMES cairo.h
++  HINTS ${PC_CAIRO_INCLUDEDIR}
++  ${PC_CAIRO_INCLUDE_DIRS}
++  PATH_SUFFIXES cairo
++)
++if (CAIRO_INCLUDE_DIRS)
++  if (EXISTS "${CAIRO_INCLUDE_DIRS}/cairo-version.h")
++    file(READ "${CAIRO_INCLUDE_DIRS}/cairo-version.h" CAIRO_VERSION_CONTENT)
++    string(REGEX MATCH "#define +CAIRO_VERSION_MAJOR +([0-9]+)" _dummy "${CAIRO_VERSION_CONTENT}")
++    set(CAIRO_VERSION_MAJOR "${CMAKE_MATCH_1}")
++    string(REGEX MATCH "#define +CAIRO_VERSION_MINOR +([0-9]+)" _dummy "${CAIRO_VERSION_CONTENT}")
++    set(CAIRO_VERSION_MINOR "${CMAKE_MATCH_1}")
++    string(REGEX MATCH "#define +CAIRO_VERSION_MICRO +([0-9]+)" _dummy "${CAIRO_VERSION_CONTENT}")
++    set(CAIRO_VERSION_MICRO "${CMAKE_MATCH_1}")
++    set(CAIRO_VERSION "${CAIRO_VERSION_MAJOR}.${CAIRO_VERSION_MINOR}.${CAIRO_VERSION_MICRO}")
++  endif ()
++endif ()
++# FIXME: Should not be needed anymore once we start depending on CMake 2.8.3
++set(VERSION_OK TRUE)
++if (Cairo_FIND_VERSION)
++  if (Cairo_FIND_VERSION_EXACT)
++    if ("${Cairo_FIND_VERSION}" VERSION_EQUAL "${CAIRO_VERSION}")
++      # FIXME: Use if (NOT ...) with CMake 2.8.2+ to get rid of the ELSE block
++    else ()
++      set(VERSION_OK FALSE)
++    endif ()
++  else ()
++    if ("${Cairo_FIND_VERSION}" VERSION_GREATER "${CAIRO_VERSION}")
++    set(VERSION_OK FALSE)
++    endif ()
++  endif ()
++endif ()
++include(FindPackageHandleStandardArgs)
++FIND_PACKAGE_HANDLE_STANDARD_ARGS(Cairo DEFAULT_MSG CAIRO_INCLUDE_DIRS CAIRO_LIBRARY VERSION_OK)
+diff --git a/pkg/analysis_server/ffi/icon_gen/cmake/FindHarfBuzz.cmake b/pkg/analysis_server/ffi/icon_gen/cmake/FindHarfBuzz.cmake
+new file mode 100644
+index 00000000000..3583b17f491
+--- /dev/null
++++ b/pkg/analysis_server/ffi/icon_gen/cmake/FindHarfBuzz.cmake
+@@ -0,0 +1,24 @@
++# Library
++find_library(HARFBUZZ_LIBRARY NAMES harfbuzz)
++
++# Include dir
++find_path(HARFBUZZ_INCLUDE_DIR
++    NAMES hb.h
++    PATH_SUFFIXES harfbuzz)
++
++include(FindPackageHandleStandardArgs)
++find_package_handle_standard_args(HarfBuzz DEFAULT_MSG
++    HARFBUZZ_LIBRARY
++    HARFBUZZ_INCLUDE_DIR)
++
++mark_as_advanced(FORCE
++    HARFBUZZ_LIBRARY
++    HARFBUZZ_INCLUDE_DIR)
++
++if(NOT TARGET HarfBuzz::HarfBuzz)
++    add_library(HarfBuzz::HarfBuzz UNKNOWN IMPORTED)
++    set_target_properties(HarfBuzz::HarfBuzz PROPERTIES
++        IMPORTED_LOCATION ${HARFBUZZ_LIBRARY}
++        INTERFACE_INCLUDE_DIRECTORIES ${HARFBUZZ_INCLUDE_DIR})
++endif()
++
+diff --git a/pkg/analysis_server/ffi/icon_gen/icon_gen.cc b/pkg/analysis_server/ffi/icon_gen/icon_gen.cc
+new file mode 100644
+index 00000000000..d38f856e001
+--- /dev/null
++++ b/pkg/analysis_server/ffi/icon_gen/icon_gen.cc
+@@ -0,0 +1,583 @@
++//
++//  icon_gen.cc
++//
++//  Adapted from harfbuzz-tutorial.
++//
++//  Created by Steve Messick on 8/4/22.
++//
++
++#include "icon_gen.h"
++#define FONT_FILE C_FONT_FILE
++
++using namespace std;
++
++shared_ptr<font_families> read_font_files(ifstream& file);
++int check_error_bits(ifstream* f);
++int gen_all_previews(const char* fontfile,
++                     const char* codepointsfile,
++                     FT_Face ft_face,
++                     hb_font_t* hb_font);
++string process_icon(FILE* out,
++                    const string& dir,
++                    const string& glyph_name,
++                    unsigned int codepoint,
++                    FT_Face ft_face,
++                    hb_font_t* hb_font);
++void process_font_family(ifstream& file, std::shared_ptr<font_families>& info);
++int gen_preview(char* glyph_name,
++                uint16_t* utf16,
++                FT_Face ft_face,
++                hb_font_t* hb_font);
++
++const string out_path = OUT_PATH;
++const string separator = SEPARATOR;
++const string icon_previews = ICON_PREVIEWS;
++const string dot_png = DOT_PNG;
++
++char* error(FILE* out, const char* message) {
++  fprintf(out, "%s\n", message);
++  fflush(out);
++  fclose(out);
++  return (char*)0;
++}
++
++char* gen_icon(int32_t codepoint, char* font_path) {
++  FILE* out = fopen("/Users/messick/tmp2/aaaa.txt", "a+");
++  fprintf(out, "Enter gen_icon %i\n", codepoint);
++  fprintf(out, "%s\n", font_path);
++  FT_Library ft_library;
++  FT_Face ft_face;
++  FT_Error ft_error;
++
++  if ((ft_error = FT_Init_FreeType(&ft_library))) {
++    return error(out, "Exiting due to init error");
++  }
++  if ((ft_error = FT_New_Face(ft_library, font_path, 0, &ft_face))) {
++    return error(out, "Cannot open font file");
++  }
++  if ((ft_error =
++           FT_Set_Char_Size(ft_face, FONT_SIZE * 64, FONT_SIZE * 64, 0, 0))) {
++    return error(out, "Exiting due to error");
++  }
++
++  /* Create hb-ft font. */
++  hb_font_t* hb_font;
++  hb_font = hb_ft_font_create(ft_face, NULL);
++
++  const char* dir = "/tmp";
++  const char* name = "icon";
++  string out_path = process_icon(out, dir, name, codepoint, ft_face, hb_font);
++
++  hb_font_destroy(hb_font);
++
++  FT_Done_Face(ft_face);
++  FT_Done_FreeType(ft_library);
++  const char* result = out_path.c_str();
++
++  // malloc and strcpy result
++  int len = strlen(result + 1);
++  char* data = (char*)malloc(len * sizeof(char));
++  strcpy(data, result);
++  fflush(out);
++  fclose(out);
++  return data;
++}
++
++void free_string(char* str) {
++  // Free native memory in C which was allocated in C.
++  free(str);
++}
++
++int main(int argc, char** argv) {
++  string fontfile = FONT_FILE;
++
++  if (argc == 1) {
++    string codepointsfile = argv[1];
++    ifstream file;
++    file.open(codepointsfile);
++    auto info = read_font_files(file);
++    if (info == NULL) {
++      // fprintf(stdout, "error\n");
++      exit(info && -1);
++    }
++    string line;
++    getline(file, line);
++    if (check_error_bits(&file)) {
++      return -1;
++    }
++    int count = stoi(line);
++    for (int index = 0; index < count; index++) {
++      // fprintf(stdout, "processing: %i\n", index);
++      process_font_family(file, info);
++    }
++    // fprintf(stdout, "X\n");
++    file.close();
++    exit(0);
++  }
++
++  string codepointsfile = C_CODEPOINTS_FILE;
++  /* Initialize FreeType and create FreeType font face. */
++  FT_Library ft_library;
++  FT_Face ft_face;
++  FT_Error ft_error;
++
++  if ((ft_error = FT_Init_FreeType(&ft_library))) abort();
++  if ((ft_error = FT_New_Face(ft_library, fontfile.c_str(), 0, &ft_face)))
++    abort();
++  if ((ft_error =
++           FT_Set_Char_Size(ft_face, FONT_SIZE * 64, FONT_SIZE * 64, 0, 0)))
++    abort();
++
++  /* Create hb-ft font. */
++  hb_font_t* hb_font;
++  hb_font = hb_ft_font_create(ft_face, NULL);
++
++  int result;
++  result = gen_all_previews(fontfile.c_str(), codepointsfile.c_str(), ft_face,
++                            hb_font);
++
++  hb_font_destroy(hb_font);
++
++  FT_Done_Face(ft_face);
++  FT_Done_FreeType(ft_library);
++
++  return result;
++}
++
++// Returns a linked list of struct font_info.
++shared_ptr<font_families> read_font_files(ifstream& file) {
++  int result;
++  string line;
++
++  if (!file.is_open()) return NULL;
++  getline(file, line);
++  if (check_error_bits(&file)) {
++    return NULL;
++  }
++  getline(file, line);
++  if (check_error_bits(&file)) {
++    return NULL;
++  }
++  getline(file, line);
++  if (check_error_bits(&file)) {
++    return NULL;
++  }
++  int count = stoi(line);
++  auto info = make_shared<font_families>();
++  auto head = info;
++  for (int i = 0; i < count; i++) {
++    getline(file, line);
++    if (check_error_bits(&file)) {
++      return NULL;
++    }
++    // Parse <font-family>:<path-to-font-file>
++    int n = 2;
++    int index = line.find(": ");
++    if (index < 0) {
++      index = line.find(':');
++      n = 1;
++    }
++    string name = line.substr(0, index);
++    string path = line.substr(index + n);
++    // fprintf(stdout, "read: %s, %s\n", name.c_str(), path.c_str());
++    info->family_name = name;
++    info->font_path = path;
++    if (i < count - 1) {
++      info->next = make_shared<font_families>();
++      info = info->next;
++    }
++  }
++  info->next = NULL;
++  getline(file, line);  // skip "codepoints"
++  if (check_error_bits(&file)) {
++    return NULL;
++  }
++  return head;
++}
++
++// From:
++// https://gehrcke.de/2011/06/reading-files-in-c-using-ifstream-dealing-correctly-with-badbit-failbit-eofbit-and-perror/
++int check_error_bits(ifstream* f) {
++  int stop = 0;
++  if (f->eof()) {
++    perror("stream eofbit. error state");
++    // EOF after std::getline() is not the criterion to stop processing
++    // data: In case there is data between the last delimiter and EOF,
++    // getline() extracts it and sets the eofbit.
++    stop = 0;
++  }
++  if (f->fail()) {
++    perror("stream failbit (or badbit). error state");
++    stop = 1;
++  }
++  if (f->bad()) {
++    perror("stream badbit. error state");
++    stop = 1;
++  }
++  return stop;
++}
++
++string find_path(const string& name, shared_ptr<font_families>& base) {
++  shared_ptr<font_families> info = base;
++  shared_ptr<font_families> head = info;
++  while (info != NULL) {
++    // fprintf(stdout, "compare: %s %s\n", name.c_str(),
++    // info->family_name.c_str());
++    if (name == info->family_name) {
++      return info->font_path;
++    }
++    info = info->next;
++  }
++  if (head->next == NULL) {
++    return head->font_path;
++  }
++  return NULL;
++}
++
++string make_output_dir(const string& path, const string& family_name) {
++  int start = path.find("pub.dev/") + 8;
++  int end = path.find('-', start);
++  string pack = path.substr(start, end - start);
++  string out_dir = out_path + pack + separator + icon_previews + separator +
++                   family_name + separator;
++  namespace fs = filesystem;
++  fs::create_directories(out_dir);
++  return out_dir;
++}
++
++void process_font_family(ifstream& file, std::shared_ptr<font_families>& info) {
++  string line;
++  getline(file, line);  // skip family name
++  string path;
++  getline(file, path);
++  getline(file, line);  // <family-name>: <package-name>
++  int index = line.find(": ");
++  if (index < 0) index = line.find(":");
++  string family_name = line.substr(0, index);
++  if (info->next == NULL && family_name == "null") {
++    family_name = info->family_name;
++  }
++  string fontfile = find_path(family_name, info);
++  // if (fontfile == (string)NULL) {
++  //   //fprintf(stderr, "Font family not found: %s\n", family_name.c_str());
++  //   exit(-1);
++  // }
++  // fprintf(stdout, "fontfile: %s\n", fontfile.c_str());
++  string dir = make_output_dir(path, family_name);
++  // fprintf(stdout, "output: %s\n", dir.c_str());
++  FT_Library ft_library;
++  FT_Face ft_face;
++  FT_Error ft_error;
++
++  if ((ft_error = FT_Init_FreeType(&ft_library))) abort();
++  if ((ft_error = FT_New_Face(ft_library, fontfile.c_str(), 0, &ft_face)))
++    abort();
++  if ((ft_error =
++           FT_Set_Char_Size(ft_face, FONT_SIZE * 64, FONT_SIZE * 64, 0, 0)))
++    abort();
++
++  /* Create hb-ft font. */
++  hb_font_t* hb_font;
++  hb_font = hb_ft_font_create(ft_face, NULL);
++
++  getline(file, line);
++  // fprintf(stdout, "count: %s\n", line.c_str());
++  int count = stoi(line);
++  for (int i = 0; i < count; i++) {
++    getline(file, line);
++    int index = line.find(": ");
++    int n = 2;
++    if (index < 0) {
++      index = line.find(":");
++      n = 1;
++    }
++    string name = line.substr(0, index);
++    string code = line.substr(index + n);
++    int codepoint = stoi(code);
++    // //fprintf(stdout, "%s: %i\n", name.c_str(), codepoint);
++    process_icon((FILE*)NULL, dir, name, codepoint, ft_face, hb_font);
++  }
++  hb_font_destroy(hb_font);
++
++  FT_Done_Face(ft_face);
++  FT_Done_FreeType(ft_library);
++}
++
++string process_icon(FILE* out,
++                    const string& dir,
++                    const string& glyph_name,
++                    unsigned int codepoint,
++                    FT_Face ft_face,
++                    hb_font_t* hb_font) {
++  /* Create hb-buffer and populate. */
++  hb_buffer_t* hb_buffer;
++  hb_buffer = hb_buffer_create();
++  if (codepoint <= 0xFFFF) {
++    uint16_t* utf16 = (uint16_t*)malloc(sizeof(uint16_t));
++    utf16[0] = codepoint;
++    hb_buffer_add_utf16(hb_buffer, utf16, -1, 0, -1);
++    free(utf16);
++  } else {
++    uint32_t* utf32 = (uint32_t*)malloc(sizeof(uint32_t));
++    utf32[0] = (codepoint & 0xFFFF0000 >> 16) | (codepoint & 0x0000FFFF);
++    hb_buffer_add_utf32(hb_buffer, utf32, -1, 0, -1);
++    free(utf32);
++  }
++  hb_buffer_guess_segment_properties(hb_buffer);
++
++  /* Shape it! */
++  hb_shape(hb_font, hb_buffer, NULL, 0);
++
++  /* Get glyph information and positions out of the buffer. */
++  unsigned int len = hb_buffer_get_length(hb_buffer);
++  hb_glyph_info_t* info = hb_buffer_get_glyph_infos(hb_buffer, NULL);
++  hb_glyph_position_t* pos = hb_buffer_get_glyph_positions(hb_buffer, NULL);
++
++  /* Print them out as is. *
++  printf("Raw buffer contents:\n");
++  for (unsigned int i = 0; i < len; i++) {
++    hb_codepoint_t gid = info[i].codepoint;
++    unsigned int cluster = info[i].cluster;
++    double x_advance = pos[i].x_advance / 64.;
++    double y_advance = pos[i].y_advance / 64.;
++    double x_offset = pos[i].x_offset / 64.;
++    double y_offset = pos[i].y_offset / 64.;
++
++    char glyphname[32];
++    hb_font_get_glyph_name(hb_font, gid, glyphname, sizeof(glyphname));
++
++    printf("glyph='%s'	cluster=%d	advance=(%g,%g)	offset=(%g,%g)\n",
++           glyphname, cluster, x_advance, y_advance, x_offset, y_offset);
++  }*/
++
++  hb_codepoint_t gid = info[0].codepoint;
++  char glyphname[256];
++  glyphname[0] = 0;
++  int got_glyph = 0;
++  if (hb_font_get_glyph_name(hb_font, gid, glyphname, sizeof(glyphname))) {
++    got_glyph = 1;
++#ifdef DEBUG
++    fprintf(out, "glyph='%s' codepoint=%x\n", glyphname, gid);
++#endif
++  }
++  string glyph_string(glyphname);
++
++  /* Draw, using cairo. */
++  double width = MARGIN;
++  double height = MARGIN;
++  for (unsigned int i = 0; i < len; i++) {
++    width += pos[i].x_advance / 64.;
++    height -= pos[i].y_advance / 64.;
++  }
++  if (HB_DIRECTION_IS_HORIZONTAL(hb_buffer_get_direction(hb_buffer)))
++    height += FONT_SIZE;
++  else
++    width += FONT_SIZE;
++
++  /* Set up cairo surface. */
++  cairo_surface_t* cairo_surface;
++  cairo_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, ceil(width),
++                                             ceil(height));
++  cairo_t* cr;
++  cr = cairo_create(cairo_surface);
++  cairo_set_source_rgba(cr, 1., 1., 1., 0.);
++  cairo_paint(cr);
++  cairo_set_source_rgba(cr, ICON_COLOR, ICON_COLOR, ICON_COLOR, 1.);
++  cairo_translate(cr, MARGIN, MARGIN);
++
++  /* Set up cairo font face. */
++  cairo_font_face_t* cairo_face;
++  cairo_face = cairo_ft_font_face_create_for_ft_face(ft_face, 0);
++  cairo_set_font_face(cr, cairo_face);
++  cairo_set_font_size(cr, FONT_SIZE);
++
++  /* Set up baseline. */
++  if (HB_DIRECTION_IS_HORIZONTAL(hb_buffer_get_direction(hb_buffer))) {
++    cairo_font_extents_t font_extents;
++    cairo_font_extents(cr, &font_extents);
++    double baseline =
++        (FONT_SIZE - font_extents.height) * .5 + font_extents.ascent;
++    cairo_translate(cr, 0, baseline);
++  } else {
++    cairo_translate(cr, FONT_SIZE * .5, 0);
++  }
++
++  cairo_glyph_t* cairo_glyphs = cairo_glyph_allocate(len);
++  double current_x = 0;
++  double current_y = 0;
++  for (unsigned int i = 0; i < len; i++) {
++    cairo_glyphs[i].index = info[i].codepoint;
++    cairo_glyphs[i].x = current_x + pos[i].x_offset / 64.;
++    cairo_glyphs[i].y = -(current_y + pos[i].y_offset / 64.);
++    current_x += pos[i].x_advance / 64.;
++    current_y += pos[i].y_advance / 64.;
++  }
++  cairo_show_glyphs(cr, cairo_glyphs, len);
++  cairo_glyph_free(cairo_glyphs);
++
++  string out_file_path;
++  if (got_glyph) {
++    out_file_path = dir + "/" + glyph_string + dot_png;
++  } else {
++    out_file_path = dir + "/" + glyph_name + dot_png;
++  }
++  if (out) fprintf(out, "file: %s\n", out_file_path.c_str());
++
++  cairo_surface_write_to_png(cairo_surface, out_file_path.c_str());
++
++  cairo_font_face_destroy(cairo_face);
++  cairo_destroy(cr);
++  cairo_surface_destroy(cairo_surface);
++
++  hb_buffer_destroy(hb_buffer);
++  return out_file_path;
++}
++
++int gen_all_previews(const char* fontfile,
++                     const char* codepointsfile,
++                     FT_Face ft_face,
++                     hb_font_t* hb_font) {
++  int result;
++  char glyph_name[256];
++  char comment[100];
++  FILE* stream;
++
++  stream = fopen(codepointsfile, "r");
++  if (stream == NULL) {
++    return -2;
++  }
++  if (fgets(comment, 100, stream) == NULL) {
++    return -3;
++  }
++  if (fgets(comment, 100, stream) == NULL) {
++    return -3;
++  }
++  if (fgets(comment, 100, stream) == NULL) {
++    return -3;
++  }
++  uint16_t* utf16 = (uint16_t*)malloc(sizeof(uint16_t));
++  while (1) {
++    if (fgets(comment, 100, stream) == NULL) {
++      if (!feof(stream)) {
++        // fprintf(stderr, "Cannot read blank line in file\n");
++      }
++      break;
++    }
++    result = fscanf(stream, "%4hx.codepoint=%255s", utf16, glyph_name);
++    if (ferror(stream)) {
++      clearerr(stream);
++      result = fscanf(stream, "%*s");
++      if (result <= 0) {
++        // fprintf(stderr, "Cannot read file: %i\n", result);
++        break;
++      }
++      fscanf(stream, "%*s");
++    }
++    result = gen_preview(glyph_name, utf16, ft_face, hb_font);
++    fscanf(stream, "%*s");
++  }
++  fclose(stream);
++  free(utf16);
++  return result;
++}
++
++int gen_preview(char* glyph_name,
++                uint16_t* utf16,
++                FT_Face ft_face,
++                hb_font_t* hb_font) {
++  /* Create hb-buffer and populate. */
++  hb_buffer_t* hb_buffer;
++  hb_buffer = hb_buffer_create();
++  hb_buffer_add_utf16(hb_buffer, utf16, 1, 0, -1);  // validity checking
++  /*hb_buffer_add_codepoints (hb_buffer, codepoint, 1, 0, -1);*/  // no validity
++                                                                  // checking
++  hb_buffer_guess_segment_properties(hb_buffer);
++
++  /* Shape it! */
++  hb_shape(hb_font, hb_buffer, NULL, 0);
++
++  /* Get glyph information and positions out of the buffer. */
++  unsigned int len = hb_buffer_get_length(hb_buffer);
++  hb_glyph_info_t* info = hb_buffer_get_glyph_infos(hb_buffer, NULL);
++  hb_glyph_position_t* pos = hb_buffer_get_glyph_positions(hb_buffer, NULL);
++
++#ifdef DEBUG
++  hb_codepoint_t gid = info[0].codepoint;
++  char glyphname[256];
++  if (hb_font_get_glyph_name(hb_font, gid, glyphname, sizeof(glyphname))) {
++    printf("glyph='%s' codepoint=%x\n", glyphname, gid);
++  }
++#endif
++
++  /* Draw, using cairo. */
++  double width = MARGIN;
++  double height = MARGIN;
++  for (unsigned int i = 0; i < len; i++) {
++    width += pos[i].x_advance / 64.;
++    height -= pos[i].y_advance / 64.;
++  }
++  if (HB_DIRECTION_IS_HORIZONTAL(hb_buffer_get_direction(hb_buffer)))
++    height += FONT_SIZE;
++  else
++    width += FONT_SIZE;
++
++  /* Set up cairo surface. */
++  cairo_surface_t* cairo_surface;
++  cairo_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, ceil(width),
++                                             ceil(height));
++  cairo_t* cr;
++  cr = cairo_create(cairo_surface);
++  cairo_set_source_rgba(cr, 1., 1., 1., 0.);
++  cairo_paint(cr);
++  cairo_set_source_rgba(cr, ICON_COLOR, ICON_COLOR, ICON_COLOR, 1.);
++  cairo_translate(cr, MARGIN, MARGIN);
++
++  /* Set up cairo font face. */
++  cairo_font_face_t* cairo_face;
++  cairo_face = cairo_ft_font_face_create_for_ft_face(ft_face, 0);
++  cairo_set_font_face(cr, cairo_face);
++  cairo_set_font_size(cr, FONT_SIZE);
++
++  /* Set up baseline. */
++  if (HB_DIRECTION_IS_HORIZONTAL(hb_buffer_get_direction(hb_buffer))) {
++    cairo_font_extents_t font_extents;
++    cairo_font_extents(cr, &font_extents);
++    double baseline =
++        (FONT_SIZE - font_extents.height) * .5 + font_extents.ascent;
++    cairo_translate(cr, 0, baseline);
++  } else {
++    cairo_translate(cr, FONT_SIZE * .5, 0);
++  }
++
++  cairo_glyph_t* cairo_glyphs = cairo_glyph_allocate(len);
++  double current_x = 0;
++  double current_y = 0;
++  for (unsigned int i = 0; i < len; i++) {
++    cairo_glyphs[i].index = info[i].codepoint;
++    cairo_glyphs[i].x = current_x + pos[i].x_offset / 64.;
++    cairo_glyphs[i].y = -(current_y + pos[i].y_offset / 64.);
++    current_x += pos[i].x_advance / 64.;
++    current_y += pos[i].y_advance / 64.;
++  }
++  cairo_show_glyphs(cr, cairo_glyphs, len);
++  cairo_glyph_free(cairo_glyphs);
++
++  char* out_file_name;
++  out_file_name = (char*)malloc(
++      (strlen(OUT_DIR) + strlen(glyph_name) + strlen(DOT_PNG) + 1) *
++      sizeof(char));
++  strcat(out_file_name, OUT_DIR);
++  strcat(out_file_name, glyph_name);
++  strcat(out_file_name, DOT_PNG);
++
++  cairo_surface_write_to_png(cairo_surface, out_file_name);
++
++  cairo_font_face_destroy(cairo_face);
++  cairo_destroy(cr);
++  cairo_surface_destroy(cairo_surface);
++  free(out_file_name);
++
++  hb_buffer_destroy(hb_buffer);
++
++  return 0;
++}
+\ No newline at end of file
+diff --git a/pkg/analysis_server/ffi/icon_gen/icon_gen.def b/pkg/analysis_server/ffi/icon_gen/icon_gen.def
+new file mode 100644
+index 00000000000..f45d91a6cdc
+--- /dev/null
++++ b/pkg/analysis_server/ffi/icon_gen/icon_gen.def
+@@ -0,0 +1,4 @@
++LIBRARY structs
++EXPORTS
++  gen_icon
++  free_string
+diff --git a/pkg/analysis_server/ffi/icon_gen/icon_gen.h b/pkg/analysis_server/ffi/icon_gen/icon_gen.h
+new file mode 100644
+index 00000000000..a24ef9151fb
+--- /dev/null
++++ b/pkg/analysis_server/ffi/icon_gen/icon_gen.h
+@@ -0,0 +1,65 @@
++//
++//  icon_gen.h
++//
++//
++//  Created by Steve Messick on 8/4/22.
++//
++
++#ifndef icon_gen_h
++#define icon_gen_h
++
++#include <cairo-ft.h>
++#include <cairo.h>
++#include <hb-ft.h>
++#include <hb.h>
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++
++#include <cstdio>
++#include <filesystem>
++#include <fstream>
++#include <iostream>
++#include <memory>
++#include <regex>
++#include <sstream>
++#include <string>
++
++#define DEBUG
++
++extern "C" {
++char* gen_icon(int32_t codepoint, char* font_path);
++void free_string(char* str);
++}
++
++#define CODEPOINT 0xf2bb
++#define FA_FONT_FILE                                                           \
++  "../../.pub-cache/hosted/pub.dartlang.org/font_awesome_flutter-9.2.0/lib/"   \
++  "fonts/fa-regular-400.ttf"
++
++#define C_CODEPOINTS_FILE "cupertino.properties"
++#define C_FONT_FILE                                                            \
++  "../../.pub-cache/hosted/pub.dartlang.org/cupertino_icons-1.0.4/assets/"     \
++  "CupertinoIcons.ttf"
++
++#define FONT_SIZE 16
++#define MARGIN 0.0
++// This is close to plugin's 0x777777
++#define ICON_COLOR 0.47
++#define DOT_PNG ".png"
++#define OUT_DIR "cupertino/"
++#define OUT_PATH "/Users/messick/tmp/"
++#define ICON_PREVIEWS "icon_previews"
++// SEPARATOR must be a single character.
++#define SEPARATOR "/"
++#define MAX_FAMILY_NAME_LEN 50
++#define MAX_PATH_LEN 256
++#define MAX_ICON_NAME_LEN 100
++
++struct font_families {
++  std::string family_name;
++  std::string font_path;
++  std::shared_ptr<font_families> next;
++};
++
++#endif /* icon_gen_h */
+diff --git a/pkg/analysis_server/lib/lsp_protocol/protocol_icon_preview_generated.dart b/pkg/analysis_server/lib/lsp_protocol/protocol_icon_preview_generated.dart
+new file mode 100644
+index 00000000000..c00e32bd674
+--- /dev/null
++++ b/pkg/analysis_server/lib/lsp_protocol/protocol_icon_preview_generated.dart
+@@ -0,0 +1,665 @@
++// Copyright (c) 2023, the Dart project authors. Please see the AUTHORS file
++// for details. All rights reserved. Use of this source code is governed by a
++// BSD-style license that can be found in the LICENSE file.
++
++// This file has been automatically generated. Please do not edit it manually.
++// To regenerate the file, use the script
++// "pkg/analysis_server/tool/lsp_spec/generate_all.dart".
++
++import 'dart:core' hide deprecated;
++import 'dart:core' as core show deprecated;
++import 'dart:convert' show JsonEncoder;
++import 'package:analysis_server/lsp_protocol/protocol_generated.dart';
++import 'package:analysis_server/lsp_protocol/protocol_special.dart';
++import 'package:analysis_server/src/lsp/json_parsing.dart';
++import 'package:analysis_server/src/protocol/protocol_internal.dart';
++
++
++import 'package:analysis_server/lsp_protocol/protocol_custom_generated.dart';
++
++const jsonEncoder = JsonEncoder.withIndent('    ');
++class DocumentIconOptions implements WorkDoneProgressOptions, ToJsonable {
++  static const jsonHandler = LspJsonHandler(
++    DocumentIconOptions.canParse,
++    DocumentIconOptions.fromJson,
++  );
++
++  DocumentIconOptions({
++    this.workDoneProgress,
++  });
++  static DocumentIconOptions fromJson(Map<String, Object?> json) {
++    if (DocumentIconRegistrationOptions.canParse(json, nullLspJsonReporter)) {
++      return DocumentIconRegistrationOptions.fromJson(json);
++    }
++    final workDoneProgressJson = json['workDoneProgress'];
++    final workDoneProgress = workDoneProgressJson as bool?;
++    return DocumentIconOptions(
++      workDoneProgress: workDoneProgress,
++    );
++  }
++
++  @override
++  final bool? workDoneProgress;
++
++  @override
++  Map<String, Object?> toJson() {
++    var result = <String, Object?>{};
++    if (workDoneProgress != null) {
++      result['workDoneProgress'] = workDoneProgress;
++    }
++    return result;
++  }
++
++  static bool canParse(Object? obj, LspJsonReporter reporter) {
++    if (obj is Map<String, Object?>) {
++      return _canParseBool(obj, reporter, 'workDoneProgress',
++          allowsUndefined: true, allowsNull: false);
++    } else {
++      reporter.reportError('must be of type DocumentIconOptions');
++      return false;
++    }
++  }
++
++  @override
++  bool operator ==(Object other) {
++    return other is DocumentIconOptions &&
++        other.runtimeType == DocumentIconOptions &&
++        workDoneProgress == other.workDoneProgress;
++  }
++
++  @override
++  int get hashCode => workDoneProgress.hashCode;
++
++  @override
++  String toString() => jsonEncoder.convert(toJson());
++}
++
++/// Parameters for a [DocumentIconRequest].
++class DocumentIconParams
++    implements PartialResultParams, WorkDoneProgressParams, ToJsonable {
++  static const jsonHandler = LspJsonHandler(
++    DocumentIconParams.canParse,
++    DocumentIconParams.fromJson,
++  );
++
++  DocumentIconParams({
++    this.partialResultToken,
++    required this.textDocument,
++    this.workDoneToken,
++  });
++  static DocumentIconParams fromJson(Map<String, Object?> json) {
++    final partialResultTokenJson = json['partialResultToken'];
++    final partialResultToken = partialResultTokenJson == null
++        ? null
++        : _eitherIntString(partialResultTokenJson);
++    final textDocumentJson = json['textDocument'];
++    final textDocument = TextDocumentIdentifier.fromJson(
++        textDocumentJson as Map<String, Object?>);
++    final workDoneTokenJson = json['workDoneToken'];
++    final workDoneToken =
++        workDoneTokenJson == null ? null : _eitherIntString(workDoneTokenJson);
++    return DocumentIconParams(
++      partialResultToken: partialResultToken,
++      textDocument: textDocument,
++      workDoneToken: workDoneToken,
++    );
++  }
++
++  /// An optional token that a server can use to report partial results (e.g.
++  /// streaming) to the client.
++  @override
++  final ProgressToken? partialResultToken;
++
++  /// The text document.
++  final TextDocumentIdentifier textDocument;
++
++  /// An optional token that a server can use to report work done progress.
++  @override
++  final ProgressToken? workDoneToken;
++
++  @override
++  Map<String, Object?> toJson() {
++    var result = <String, Object?>{};
++    if (partialResultToken != null) {
++      result['partialResultToken'] = partialResultToken;
++    }
++    result['textDocument'] = textDocument.toJson();
++    if (workDoneToken != null) {
++      result['workDoneToken'] = workDoneToken;
++    }
++    return result;
++  }
++
++  static bool canParse(Object? obj, LspJsonReporter reporter) {
++    if (obj is Map<String, Object?>) {
++      if (!_canParseIntString(obj, reporter, 'partialResultToken',
++          allowsUndefined: true, allowsNull: false)) {
++        return false;
++      }
++      if (!_canParseTextDocumentIdentifier(obj, reporter, 'textDocument',
++          allowsUndefined: false, allowsNull: false)) {
++        return false;
++      }
++      return _canParseIntString(obj, reporter, 'workDoneToken',
++          allowsUndefined: true, allowsNull: false);
++    } else {
++      reporter.reportError('must be of type DocumentIconParams');
++      return false;
++    }
++  }
++
++  @override
++  bool operator ==(Object other) {
++    return other is DocumentIconParams &&
++        other.runtimeType == DocumentIconParams &&
++        partialResultToken == other.partialResultToken &&
++        textDocument == other.textDocument &&
++        workDoneToken == other.workDoneToken;
++  }
++
++  @override
++  int get hashCode => Object.hash(
++        partialResultToken,
++        textDocument,
++        workDoneToken,
++      );
++
++  @override
++  String toString() => jsonEncoder.convert(toJson());
++}
++
++class DocumentIconRegistrationOptions
++    implements
++        DocumentIconOptions,
++        StaticRegistrationOptions,
++        TextDocumentRegistrationOptions,
++        ToJsonable {
++  static const jsonHandler = LspJsonHandler(
++    DocumentIconRegistrationOptions.canParse,
++    DocumentIconRegistrationOptions.fromJson,
++  );
++
++  DocumentIconRegistrationOptions({
++    this.documentSelector,
++    this.id,
++    this.workDoneProgress,
++  });
++  static DocumentIconRegistrationOptions fromJson(Map<String, Object?> json) {
++    final documentSelectorJson = json['documentSelector'];
++    final documentSelector = (documentSelectorJson as List<Object?>?)
++        ?.map((item) =>
++            TextDocumentFilterWithScheme.fromJson(item as Map<String, Object?>))
++        .toList();
++    final idJson = json['id'];
++    final id = idJson as String?;
++    final workDoneProgressJson = json['workDoneProgress'];
++    final workDoneProgress = workDoneProgressJson as bool?;
++    return DocumentIconRegistrationOptions(
++      documentSelector: documentSelector,
++      id: id,
++      workDoneProgress: workDoneProgress,
++    );
++  }
++
++  /// A document selector to identify the scope of the registration. If set to
++  /// null the document selector provided on the client side will be used.
++  @override
++  final List<TextDocumentFilterWithScheme>? documentSelector;
++
++  /// The id used to register the request. The id can be used to deregister the
++  /// request again. See also Registration#id.
++  @override
++  final String? id;
++  @override
++  final bool? workDoneProgress;
++
++  @override
++  Map<String, Object?> toJson() {
++    var result = <String, Object?>{};
++    result['documentSelector'] = documentSelector;
++    if (id != null) {
++      result['id'] = id;
++    }
++    if (workDoneProgress != null) {
++      result['workDoneProgress'] = workDoneProgress;
++    }
++    return result;
++  }
++
++  static bool canParse(Object? obj, LspJsonReporter reporter) {
++    if (obj is Map<String, Object?>) {
++      if (!_canParseListTextDocumentFilterWithScheme(
++          obj, reporter, 'documentSelector',
++          allowsUndefined: false, allowsNull: true)) {
++        return false;
++      }
++      if (!_canParseString(obj, reporter, 'id',
++          allowsUndefined: true, allowsNull: false)) {
++        return false;
++      }
++      return _canParseBool(obj, reporter, 'workDoneProgress',
++          allowsUndefined: true, allowsNull: false);
++    } else {
++      reporter.reportError('must be of type DocumentIconRegistrationOptions');
++      return false;
++    }
++  }
++
++  @override
++  bool operator ==(Object other) {
++    return other is DocumentIconRegistrationOptions &&
++        other.runtimeType == DocumentIconRegistrationOptions &&
++        listEqual(
++            documentSelector,
++            other.documentSelector,
++            (TextDocumentFilterWithScheme a, TextDocumentFilterWithScheme b) =>
++                a == b) &&
++        id == other.id &&
++        workDoneProgress == other.workDoneProgress;
++  }
++
++  @override
++  int get hashCode => Object.hash(
++        lspHashCode(documentSelector),
++        id,
++        workDoneProgress,
++      );
++
++  @override
++  String toString() => jsonEncoder.convert(toJson());
++}
++
++/// Represents an icon from a document.
++class IconInformation implements ToJsonable {
++  static const jsonHandler = LspJsonHandler(
++    IconInformation.canParse,
++    IconInformation.fromJson,
++  );
++
++  IconInformation({
++    required this.data,
++    required this.identifier,
++    required this.range,
++  });
++  static IconInformation fromJson(Map<String, Object?> json) {
++    final dataJson = json['data'];
++    final data = dataJson as String;
++    final identifierJson = json['identifier'];
++    final identifier = identifierJson as String;
++    final rangeJson = json['range'];
++    final range = Range.fromJson(rangeJson as Map<String, Object?>);
++    return IconInformation(
++      data: data,
++      identifier: identifier,
++      range: range,
++    );
++  }
++
++  /// The base64-encoded data of a PNG image.
++  final String data;
++
++  /// A unique identifier for the icon, '$fontPackage.$codepoint'.
++  final String identifier;
++
++  /// The range in the document where this icon is referenced.
++  final Range range;
++
++  @override
++  Map<String, Object?> toJson() {
++    var result = <String, Object?>{};
++    result['data'] = data;
++    result['identifier'] = identifier;
++    result['range'] = range.toJson();
++    return result;
++  }
++
++  static bool canParse(Object? obj, LspJsonReporter reporter) {
++    if (obj is Map<String, Object?>) {
++      if (!_canParseString(obj, reporter, 'data',
++          allowsUndefined: false, allowsNull: false)) {
++        return false;
++      }
++      if (!_canParseString(obj, reporter, 'identifier',
++          allowsUndefined: false, allowsNull: false)) {
++        return false;
++      }
++      return _canParseRange(obj, reporter, 'range',
++          allowsUndefined: false, allowsNull: false);
++    } else {
++      reporter.reportError('must be of type IconInformation');
++      return false;
++    }
++  }
++
++  @override
++  bool operator ==(Object other) {
++    return other is IconInformation &&
++        other.runtimeType == IconInformation &&
++        data == other.data &&
++        identifier == other.identifier &&
++        range == other.range;
++  }
++
++  @override
++  int get hashCode => Object.hash(
++        data,
++        identifier,
++        range,
++      );
++
++  @override
++  String toString() => jsonEncoder.convert(toJson());
++}
++
++/// All standard LSP Methods read from the JSON spec.
++class Method implements ToJsonable {
++  const Method(this._value);
++  const Method.fromJson(this._value);
++
++  final String _value;
++
++  static bool canParse(Object? obj, LspJsonReporter reporter) => obj is String;
++
++  /// Constant for the 'dart/textDocument/documentIcons' method.
++  static const dart_textDocument_documentIcons =
++      Method('dart/textDocument/documentIcons');
++
++  @override
++  Object toJson() => _value;
++
++  @override
++  String toString() => _value.toString();
++
++  @override
++  int get hashCode => _value.hashCode;
++
++  @override
++  bool operator ==(Object other) => other is Method && other._value == _value;
++}
++
++/// An array of IconInformation specific to the given URI.
++class PublishIconPreviewParams implements ToJsonable {
++  static const jsonHandler = LspJsonHandler(
++    PublishIconPreviewParams.canParse,
++    PublishIconPreviewParams.fromJson,
++  );
++
++  PublishIconPreviewParams({
++    required this.icons,
++    required this.uri,
++  });
++  static PublishIconPreviewParams fromJson(Map<String, Object?> json) {
++    final iconsJson = json['icons'];
++    final icons = (iconsJson as List<Object?>)
++        .map((item) => IconInformation.fromJson(item as Map<String, Object?>))
++        .toList();
++    final uriJson = json['uri'];
++    final uri = Uri.parse(uriJson as String);
++    return PublishIconPreviewParams(
++      icons: icons,
++      uri: uri,
++    );
++  }
++
++  /// An array of IconInformation.
++  final List<IconInformation> icons;
++
++  /// The URI of the file being analyzed.
++  final LSPUri uri;
++
++  @override
++  Map<String, Object?> toJson() {
++    var result = <String, Object?>{};
++    result['icons'] = icons.map((item) => item.toJson()).toList();
++    result['uri'] = uri.toString();
++    return result;
++  }
++
++  static bool canParse(Object? obj, LspJsonReporter reporter) {
++    if (obj is Map<String, Object?>) {
++      if (!_canParseListIconInformation(obj, reporter, 'icons',
++          allowsUndefined: false, allowsNull: false)) {
++        return false;
++      }
++      return _canParseUri(obj, reporter, 'uri',
++          allowsUndefined: false, allowsNull: false);
++    } else {
++      reporter.reportError('must be of type PublishIconPreviewParams');
++      return false;
++    }
++  }
++
++  @override
++  bool operator ==(Object other) {
++    return other is PublishIconPreviewParams &&
++        other.runtimeType == PublishIconPreviewParams &&
++        listEqual(icons, other.icons,
++            (IconInformation a, IconInformation b) => a == b) &&
++        uri == other.uri;
++  }
++
++  @override
++  int get hashCode => Object.hash(
++        lspHashCode(icons),
++        uri,
++      );
++
++  @override
++  String toString() => jsonEncoder.convert(toJson());
++}
++
++bool _canParseBool(
++    Map<String, Object?> map, LspJsonReporter reporter, String fieldName,
++    {required bool allowsUndefined, required bool allowsNull}) {
++  reporter.push(fieldName);
++  try {
++    if (!allowsUndefined && !map.containsKey(fieldName)) {
++      reporter.reportError('must not be undefined');
++      return false;
++    }
++    final value = map[fieldName];
++    final nullCheck = allowsNull || allowsUndefined;
++    if (!nullCheck && value == null) {
++      reporter.reportError('must not be null');
++      return false;
++    }
++    if ((!nullCheck || value != null) && value is! bool) {
++      reporter.reportError('must be of type bool');
++      return false;
++    }
++  } finally {
++    reporter.pop();
++  }
++  return true;
++}
++
++bool _canParseIntString(
++    Map<String, Object?> map, LspJsonReporter reporter, String fieldName,
++    {required bool allowsUndefined, required bool allowsNull}) {
++  reporter.push(fieldName);
++  try {
++    if (!allowsUndefined && !map.containsKey(fieldName)) {
++      reporter.reportError('must not be undefined');
++      return false;
++    }
++    final value = map[fieldName];
++    final nullCheck = allowsNull || allowsUndefined;
++    if (!nullCheck && value == null) {
++      reporter.reportError('must not be null');
++      return false;
++    }
++    if ((!nullCheck || value != null) && (value is! int && value is! String)) {
++      reporter.reportError('must be of type Either2<int, String>');
++      return false;
++    }
++  } finally {
++    reporter.pop();
++  }
++  return true;
++}
++
++bool _canParseListIconInformation(
++    Map<String, Object?> map, LspJsonReporter reporter, String fieldName,
++    {required bool allowsUndefined, required bool allowsNull}) {
++  reporter.push(fieldName);
++  try {
++    if (!allowsUndefined && !map.containsKey(fieldName)) {
++      reporter.reportError('must not be undefined');
++      return false;
++    }
++    final value = map[fieldName];
++    final nullCheck = allowsNull || allowsUndefined;
++    if (!nullCheck && value == null) {
++      reporter.reportError('must not be null');
++      return false;
++    }
++    if ((!nullCheck || value != null) &&
++        (value is! List<Object?> ||
++            value.any((item) => !IconInformation.canParse(item, reporter)))) {
++      reporter.reportError('must be of type List<IconInformation>');
++      return false;
++    }
++  } finally {
++    reporter.pop();
++  }
++  return true;
++}
++
++bool _canParseListTextDocumentFilterWithScheme(
++    Map<String, Object?> map, LspJsonReporter reporter, String fieldName,
++    {required bool allowsUndefined, required bool allowsNull}) {
++  reporter.push(fieldName);
++  try {
++    if (!allowsUndefined && !map.containsKey(fieldName)) {
++      reporter.reportError('must not be undefined');
++      return false;
++    }
++    final value = map[fieldName];
++    final nullCheck = allowsNull || allowsUndefined;
++    if (!nullCheck && value == null) {
++      reporter.reportError('must not be null');
++      return false;
++    }
++    if ((!nullCheck || value != null) &&
++        (value is! List<Object?> ||
++            value.any((item) =>
++                !TextDocumentFilterWithScheme.canParse(item, reporter)))) {
++      reporter
++          .reportError('must be of type List<TextDocumentFilterWithScheme>');
++      return false;
++    }
++  } finally {
++    reporter.pop();
++  }
++  return true;
++}
++
++bool _canParseRange(
++    Map<String, Object?> map, LspJsonReporter reporter, String fieldName,
++    {required bool allowsUndefined, required bool allowsNull}) {
++  reporter.push(fieldName);
++  try {
++    if (!allowsUndefined && !map.containsKey(fieldName)) {
++      reporter.reportError('must not be undefined');
++      return false;
++    }
++    final value = map[fieldName];
++    final nullCheck = allowsNull || allowsUndefined;
++    if (!nullCheck && value == null) {
++      reporter.reportError('must not be null');
++      return false;
++    }
++    if ((!nullCheck || value != null) && !Range.canParse(value, reporter)) {
++      reporter.reportError('must be of type Range');
++      return false;
++    }
++  } finally {
++    reporter.pop();
++  }
++  return true;
++}
++
++bool _canParseString(
++    Map<String, Object?> map, LspJsonReporter reporter, String fieldName,
++    {required bool allowsUndefined, required bool allowsNull}) {
++  reporter.push(fieldName);
++  try {
++    if (!allowsUndefined && !map.containsKey(fieldName)) {
++      reporter.reportError('must not be undefined');
++      return false;
++    }
++    final value = map[fieldName];
++    final nullCheck = allowsNull || allowsUndefined;
++    if (!nullCheck && value == null) {
++      reporter.reportError('must not be null');
++      return false;
++    }
++    if ((!nullCheck || value != null) && value is! String) {
++      reporter.reportError('must be of type String');
++      return false;
++    }
++  } finally {
++    reporter.pop();
++  }
++  return true;
++}
++
++bool _canParseTextDocumentIdentifier(
++    Map<String, Object?> map, LspJsonReporter reporter, String fieldName,
++    {required bool allowsUndefined, required bool allowsNull}) {
++  reporter.push(fieldName);
++  try {
++    if (!allowsUndefined && !map.containsKey(fieldName)) {
++      reporter.reportError('must not be undefined');
++      return false;
++    }
++    final value = map[fieldName];
++    final nullCheck = allowsNull || allowsUndefined;
++    if (!nullCheck && value == null) {
++      reporter.reportError('must not be null');
++      return false;
++    }
++    if ((!nullCheck || value != null) &&
++        !TextDocumentIdentifier.canParse(value, reporter)) {
++      reporter.reportError('must be of type TextDocumentIdentifier');
++      return false;
++    }
++  } finally {
++    reporter.pop();
++  }
++  return true;
++}
++
++bool _canParseUri(
++    Map<String, Object?> map, LspJsonReporter reporter, String fieldName,
++    {required bool allowsUndefined, required bool allowsNull}) {
++  reporter.push(fieldName);
++  try {
++    if (!allowsUndefined && !map.containsKey(fieldName)) {
++      reporter.reportError('must not be undefined');
++      return false;
++    }
++    final value = map[fieldName];
++    final nullCheck = allowsNull || allowsUndefined;
++    if (!nullCheck && value == null) {
++      reporter.reportError('must not be null');
++      return false;
++    }
++    if ((!nullCheck || value != null) &&
++        (value is! String || Uri.tryParse(value) == null)) {
++      reporter.reportError('must be of type Uri');
++      return false;
++    }
++  } finally {
++    reporter.pop();
++  }
++  return true;
++}
++
++Either2<int, String> _eitherIntString(Object? value) {
++  return value is int
++      ? Either2.t1(value)
++      : value is String
++          ? Either2.t2(value)
++          : throw '$value was not one of (int, String)';
++}
+diff --git a/pkg/analysis_server/lib/src/computer/computer_icon_previews.dart b/pkg/analysis_server/lib/src/computer/computer_icon_previews.dart
+new file mode 100644
+index 00000000000..014aff41880
+--- /dev/null
++++ b/pkg/analysis_server/lib/src/computer/computer_icon_previews.dart
+@@ -0,0 +1,195 @@
++// Copyright (c) 2023, the Dart project authors. Please see the AUTHORS file
++// for details. All rights reserved. Use of this source code is governed by a
++// BSD-style license that can be found in the LICENSE file.
++
++import 'dart:io' as io;
++
++//import 'package:analysis_server/src/icon_gen/gen_icon.dart';
++import 'package:analysis_server/src/utilities/flutter.dart';
++import 'package:analyzer/dart/analysis/results.dart';
++import 'package:analyzer/dart/ast/ast.dart';
++import 'package:analyzer/dart/ast/visitor.dart';
++import 'package:analyzer/dart/constant/value.dart';
++import 'package:analyzer/dart/element/type.dart';
++import 'package:analyzer/dart/analysis/analysis_context.dart';
++import 'package:analyzer/src/dart/constant/value.dart' show GenericState;
++import 'package:analyzer/src/dart/element/inheritance_manager3.dart';
++import 'package:analyzer/src/dart/element/type_system.dart';
++import 'package:analyzer/src/lint/linter.dart';
++import 'package:collection/collection.dart';
++
++import '../icon_gen/gen_icon.dart';
++
++class IconPreviewComputer {
++  final ResolvedUnitResult resolvedUnit;
++  final AnalysisContext context;
++  final LinterContext _linterContext;
++  final Flutter _flutter = Flutter.instance;
++  final List<IconPackage> _iconPackages;
++  final List<IconReference> _icons = [];
++
++  IconPreviewComputer(this.resolvedUnit, this.context)
++      : _linterContext = LinterContextImpl(
++          [], // unused
++          LinterContextUnit(resolvedUnit.content, resolvedUnit.unit),
++          resolvedUnit.session.declaredVariables,
++          resolvedUnit.typeProvider,
++          resolvedUnit.typeSystem as TypeSystemImpl,
++          InheritanceManager3(), // unused
++          resolvedUnit.session.analysisContext.analysisOptions,
++          null,
++        ),
++        _iconPackages = context.potenitialIconPackages;
++
++  List<IconReference> compute() {
++    if (_iconPackages.isEmpty) return [];
++    var visitor = _IconPreviewVisitor(this);
++    resolvedUnit.unit.accept(visitor);
++    gen_icons(_icons);
++    if (_icons.isNotEmpty) {
++      printx("Found:");
++      for (var id in _icons) {
++        printx('${id.toString()} ${id.iconData.binaryContent.length}');
++      }
++    }
++    return _icons;
++  }
++
++  bool tryAddPreview(Expression expression,
++      {Expression? target, String? memberName}) {
++    if (!isIconData(expression.staticType)) return false;
++
++    target ??= expression;
++
++    // Try to evaluate the constant target.
++    final constResult = _linterContext.evaluateConstant(target);
++    var iconConst = constResult.value;
++    if (constResult.errors.isNotEmpty || iconConst == null) return false;
++
++    if (memberName != null) {
++      iconConst = _getMember(iconConst, memberName);
++    }
++
++    printx('adding $target.$memberName');
++    return _tryRecordIcon(expression, iconConst);
++  }
++
++  bool isIconData(DartType? type) => type != null && _flutter.isIconData(type);
++
++  DartObject? _getMember(DartObject target, String memberName) {
++    return target.getFieldFromHierarchy(memberName);
++  }
++
++  String? _fontAssetPathFor(String fontPackage, String? fontFamily) {
++    var package = _iconPackages
++        .firstWhereOrNull((IconPackage element) => fontPackage == element.name);
++    return package?.families[fontFamily]?.first;
++  }
++
++  IconData? _iconDataForIconConst(DartObject iconConst) {
++    var codePoint = iconConst.getField('codePoint')?.toIntValue();
++    var fontFamily = iconConst.getField('fontFamily')?.toStringValue();
++    var fontPackage = iconConst.getField('fontPackage')?.toStringValue();
++    if (codePoint == null || fontPackage == null) {
++      var params = iconConst.getField('(super)');
++      if (params != null) {
++        return _iconDataForIconConst(params);
++      }
++      return null; // MdiIcons.undo, EvaIcons.activity, Ionicons.accessibility, FontAwesomeIcons.addressCard
++    }
++    printx('$fontPackage - $fontFamily - $codePoint');
++    var fontAssetPath = _fontAssetPathFor(fontPackage, fontFamily);
++    if (fontAssetPath == null) {
++      return null;
++    }
++    return IconData(codePoint, fontAssetPath, fontPackage, fontFamily);
++  }
++
++  bool _tryRecordIcon(Expression expression, DartObject? iconConst) {
++    if (iconConst == null) return false;
++
++    return _tryRecordIconValue(expression, _iconDataForIconConst(iconConst));
++  }
++
++  bool _tryRecordIconValue(Expression expression, IconData? icon) {
++    if (icon == null) return false;
++
++    // Record the icon against the original expression range.
++    _icons.add(IconReference(expression.offset, expression.length, icon));
++    return true;
++  }
++}
++
++class _IconPreviewVisitor extends RecursiveAstVisitor<void> {
++  final IconPreviewComputer computer;
++
++  _IconPreviewVisitor(this.computer);
++
++  @override
++  void visitPrefixedIdentifier(PrefixedIdentifier node) {
++    printx('identifier ${node.prefix}.${node.identifier}');
++    if (computer.tryAddPreview(node)) {
++      return;
++    }
++    if (computer.tryAddPreview(node,
++        target: node.prefix, memberName: node.identifier.name)) {
++      return;
++    }
++
++    super.visitPrefixedIdentifier(node);
++  }
++
++  @override
++  void visitPropertyAccess(PropertyAccess node) {
++    printx('property ${node.realTarget}.${node.propertyName}');
++    if (computer.tryAddPreview(node)) {
++      return;
++    }
++    if (computer.tryAddPreview(node,
++        target: node.realTarget, memberName: node.propertyName.name)) {
++      return;
++    }
++    super.visitPropertyAccess(node);
++  }
++}
++
++class IconReference {
++  int offset;
++  int length;
++  IconData iconData;
++
++  IconReference(this.offset, this.length, this.iconData);
++
++  @override
++  String toString() =>
++      'IconReference(${iconData.codePoint}, ${iconData.fontAssetPath})';
++}
++
++class IconData {
++  int codePoint;
++  String fontAssetPath;
++  String fontPackage;
++  String? fontFamily;
++  late String binaryContent;
++
++  IconData(
++      this.codePoint, this.fontAssetPath, this.fontPackage, this.fontFamily);
++}
++
++void printx(String string) {
++  var file = io.File('/Users/messick/tmp2/debug.txt');
++  file.createSync(recursive: true);
++  var sink = file.openSync(mode: io.FileMode.append);
++  sink.writeStringSync(string);
++  sink.writeStringSync('\n');
++  sink.closeSync();
++}
++
++extension _DartObjectExtensions on DartObject {
++  /// Reads the value of the field [field] from this object.
++  ///
++  /// If the field is not found, recurses up the super classes.
++  DartObject? getFieldFromHierarchy(String fieldName) =>
++      getField(fieldName) ??
++      getField(GenericState.SUPERCLASS_FIELD)?.getFieldFromHierarchy(fieldName);
++}
+diff --git a/pkg/analysis_server/lib/src/context_manager.dart b/pkg/analysis_server/lib/src/context_manager.dart
+index 69355e3d6e3..396bb5166ae 100644
+--- a/pkg/analysis_server/lib/src/context_manager.dart
++++ b/pkg/analysis_server/lib/src/context_manager.dart
+@@ -30,6 +30,7 @@ import 'package:analyzer/src/task/options.dart';
+ import 'package:analyzer/src/util/file_paths.dart' as file_paths;
+ import 'package:analyzer/src/workspace/blaze.dart';
+ import 'package:analyzer/src/workspace/blaze_watcher.dart';
++import 'package:analyzer/src/workspace/pub.dart';
+ import 'package:analyzer_plugin/protocol/protocol_common.dart' as protocol;
+ import 'package:analyzer_plugin/utilities/analyzer_converter.dart';
+ import 'package:path/path.dart' as path;
+@@ -633,6 +634,8 @@ class ContextManagerImpl implements ContextManager {
+               analysisContext.contextRoot.isAnalyzed(pubspecFile.path)) {
+             _analyzePubspecYaml(driver, pubspecFile.path);
+           }
++
++          _checkIconPackages(analysisContext);
+         }
+ 
+         // Finally, wait for the new contexts watchers to all become ready so we
+@@ -917,6 +920,80 @@ class ContextManagerImpl implements ContextManager {
+       blazeWatchedPathsPerFolder[folder] = watched;
+     }
+   }
++
++  void _checkIconPackages(DriverBasedAnalysisContext analysisContext) {
++    var workspace = analysisContext.contextRoot.workspace;
++    if (workspace is PubWorkspace) {
++      var iconPackages = <IconPackage>[];
++      for (var package in workspace.packages.packages) {
++        var pubspecFile =
++            package.rootFolder.getChildAssumingFile(file_paths.pubspecYaml);
++        if (!pubspecFile.exists) continue;
++        try {
++          var fileContent = pubspecFile.readAsStringSync();
++          // TODO(messick) This optimization does not work.
++          //if (!fileContent.contains('  fonts:')) {
++          // Skip parsing YAML if no font info in it.
++          //  return;
++          //}
++          var document = loadYamlDocument(fileContent);
++          var contents = document.contents;
++          if (contents is YamlMap) {
++            iconPackages.addAll(
++                _identifyIconPackages(analysisContext, pubspecFile, contents));
++          }
++        } catch (_) {}
++      }
++      if (iconPackages.isNotEmpty) {
++        analysisContext.potenitialIconPackages = iconPackages;
++      }
++    }
++  }
++
++  List<IconPackage> _identifyIconPackages(
++      DriverBasedAnalysisContext analysisContext,
++      File pubspecFile,
++      YamlMap contents) {
++    var iconPackages = <IconPackage>[];
++    var flutterNode = contents.nodes['flutter'];
++    if (flutterNode is YamlMap) {
++      var nameNode = contents.nodes['name'];
++      if (nameNode is YamlScalar) {
++        var name = nameNode.value as String;
++        var packagePath = pubspecFile.parent.path;
++        var iconPackage = IconPackageImpl(name, packagePath);
++        var fontsNode = flutterNode['fonts'];
++        if (fontsNode is YamlList) {
++          for (var fontNode in fontsNode) {
++            if (fontNode is YamlMap) {
++              var assets = <String>[];
++              var family = fontNode['family'];
++              if (family is String) {
++                var assetList = fontNode['fonts'];
++                if (assetList is YamlList) {
++                  for (var asset in assetList) {
++                    if (asset is YamlMap) {
++                      var assetPath = asset['asset'];
++                      if (assetPath is String) {
++                        assets.add(path.join(packagePath, assetPath));
++                      }
++                    }
++                  }
++                  iconPackage.addFamily(family, assets);
++                }
++              }
++            }
++          }
++          if (!iconPackage.isEmpty) {
++            iconPackages.add(iconPackage);
++          }
++          // Debug output
++          //_createPreviews(iconPackage);
++        }
++      }
++    }
++    return iconPackages;
++  }
+ }
+ 
+ class NoopContextManagerCallbacks implements ContextManagerCallbacks {
+diff --git a/pkg/analysis_server/lib/src/icon_gen/gen_icon.dart b/pkg/analysis_server/lib/src/icon_gen/gen_icon.dart
+new file mode 100644
+index 00000000000..89acc8a99ba
+--- /dev/null
++++ b/pkg/analysis_server/lib/src/icon_gen/gen_icon.dart
+@@ -0,0 +1,74 @@
++import 'dart:ffi';
++import 'dart:io';
++import 'dart:convert';
++
++import 'package:ffi/ffi.dart';
++import 'package:path/path.dart' as p;
++
++import '../computer/computer_icon_previews.dart';
++
++// C function: char *gen_icon(int32_t code_point, char *font_path)
++typedef GenIconFunc = Pointer<Utf8> Function(Int32 code, Pointer<Utf8> path);
++typedef GenIcon = Pointer<Utf8> Function(int code, Pointer<Utf8> path);
++
++// C function: void free_string(char *str)
++typedef FreeStringFunc = Void Function(Pointer<Utf8> str);
++typedef FreeString = void Function(Pointer<Utf8> str);
++
++void gen_icons(List<IconReference> icons) {
++  printx('CWD: ${Directory.current.path}');
++  for (var icon in icons) {
++    gen_icon(icon.iconData);
++  }
++}
++
++String _basePath() {
++  // Directory.current.path == '/'
++  return '/Users/messick/src/dart-sdk/sdk/pkg/analysis_server/ffi/icon_gen';
++}
++
++void gen_icon(IconData iconData) {
++  int codePoint = iconData.codePoint;
++  String fontPath = iconData.fontAssetPath;
++  String iconBits = _gen_icon(codePoint, fontPath);
++  iconData.binaryContent = iconBits;
++}
++
++var libName = 'libicon_gen.1.0.0';
++
++String _gen_icon(int codePoint, String fontPath) {
++  var libraryPath = p.join(_basePath(), '$libName.so');
++  if (Platform.isMacOS) {
++    libraryPath = p.join(_basePath(), '$libName.dylib');
++  }
++  if (Platform.isWindows) {
++    libraryPath = p.join(_basePath(), 'Debug', '$libName.dll');
++  }
++
++  printx('open dylib');
++  final dylib = DynamicLibrary.open(libraryPath);
++  printx('lookup free_string');
++  final freeString =
++      dylib.lookupFunction<FreeStringFunc, FreeString>('free_string');
++  printx('lookup gen_icon');
++  final genIcon = dylib.lookupFunction<GenIconFunc, GenIcon>('gen_icon');
++  printx('path to native utf8');
++  var path = fontPath.toNativeUtf8();
++  printx('call genIcon');
++  var resultUtf8 = genIcon(codePoint, path);
++  printx('free path');
++  calloc.free(path);
++  if (resultUtf8 == nullptr) {
++    return '';
++  }
++  var iconPath = resultUtf8.toDartString();
++  printx('read file: $iconPath');
++  var file = File(iconPath);
++  printx('call freeString');
++  freeString(resultUtf8);
++  printx('read binary data');
++  var bytes = file.readAsBytesSync();
++  printx('base64 encoding ${bytes.length} bytes');
++  var base64 = base64Encode(bytes);
++  return base64;
++}
+diff --git a/pkg/analysis_server/lib/src/lsp/constants.dart b/pkg/analysis_server/lib/src/lsp/constants.dart
+index 24536d614be..bec8561e0ee 100644
+--- a/pkg/analysis_server/lib/src/lsp/constants.dart
++++ b/pkg/analysis_server/lib/src/lsp/constants.dart
+@@ -84,6 +84,8 @@ abstract class CustomMethods {
+   static const publishOutline = Method('dart/textDocument/publishOutline');
+   static const publishFlutterOutline =
+       Method('dart/textDocument/publishFlutterOutline');
++  static const publishIconPreviews =
++      Method('dart/textDocument/publishIconPreviews');
+   static const super_ = Method('dart/textDocument/super');
+ 
+   // TODO(dantup): Remove custom AnalyzerStatus status method soon as no clients
+diff --git a/pkg/analysis_server/lib/src/lsp/lsp_analysis_server.dart b/pkg/analysis_server/lib/src/lsp/lsp_analysis_server.dart
+index 20ce92c11aa..fa1ed4273af 100644
+--- a/pkg/analysis_server/lib/src/lsp/lsp_analysis_server.dart
++++ b/pkg/analysis_server/lib/src/lsp/lsp_analysis_server.dart
+@@ -4,10 +4,13 @@
+ 
+ import 'dart:async';
+ 
++import 'package:analysis_server/lsp_protocol/protocol_icon_preview_generated.dart'
++    hide Method;
+ import 'package:analysis_server/lsp_protocol/protocol.dart' hide MessageType;
+ import 'package:analysis_server/src/analysis_server.dart';
+ import 'package:analysis_server/src/analytics/analytics_manager.dart';
+ import 'package:analysis_server/src/computer/computer_closingLabels.dart';
++import 'package:analysis_server/src/computer/computer_icon_previews.dart';
+ import 'package:analysis_server/src/computer/computer_outline.dart';
+ import 'package:analysis_server/src/flutter/flutter_outline_computer.dart';
+ import 'package:analysis_server/src/legacy_analysis_server.dart';
+@@ -32,6 +35,7 @@ import 'package:analysis_server/src/services/refactoring/legacy/refactoring.dart
+ import 'package:analysis_server/src/services/user_prompts/dart_fix_prompt_manager.dart';
+ import 'package:analysis_server/src/utilities/flutter.dart';
+ import 'package:analysis_server/src/utilities/process.dart';
++import 'package:analyzer/dart/analysis/analysis_context.dart';
+ import 'package:analyzer/dart/analysis/context_locator.dart';
+ import 'package:analyzer/dart/analysis/results.dart';
+ import 'package:analyzer/dart/analysis/session.dart';
+@@ -680,6 +684,16 @@ class LspAnalysisServer extends AnalysisServer {
+     sendNotification(message);
+   }
+ 
++  void publishIconPreviews(String path, List<IconInformation> icons) {
++    final params = PublishIconPreviewParams(uri: Uri.file(path), icons: icons);
++    final message = NotificationMessage(
++      method: CustomMethods.publishIconPreviews,
++      params: params,
++      jsonrpc: jsonRpcVersion,
++    );
++    sendNotification(message);
++  }
++
+   Future<void> removePriorityFile(String path) async {
+     final didRemove = priorityFiles.remove(path);
+     assert(didRemove);
+@@ -822,6 +836,13 @@ class LspAnalysisServer extends AnalysisServer {
+     return initializationOptions.outline && priorityFiles.contains(file);
+   }
+ 
++  bool shouldSendIconPreviewsFor(String file) {
++    // Icons should only be sent for open (priority) files in the workspace.
++    return initializationOptions.iconPreviews &&
++        priorityFiles.contains(file) &&
++        _isInFlutterProject(file);
++  }
++
+   void showErrorMessageToUser(String message) {
+     showMessageToUser(MessageType.error, message);
+   }
+@@ -1100,6 +1121,7 @@ class LspInitializationOptions {
+   final bool flutterOutline;
+   final int? completionBudgetMilliseconds;
+   final bool allowOpenUri;
++  final bool iconPreviews;
+ 
+   factory LspInitializationOptions(Object? options) =>
+       LspInitializationOptions._(
+@@ -1121,7 +1143,8 @@ class LspInitializationOptions {
+         flutterOutline = options['flutterOutline'] == true,
+         completionBudgetMilliseconds =
+             options['completionBudgetMilliseconds'] as int?,
+-        allowOpenUri = options['allowOpenUri'] == true;
++        allowOpenUri = options['allowOpenUri'] == true,
++        iconPreviews = (options['iconPreviews'] ?? true) == true; // TODO(messick)
+ }
+ 
+ class LspServerContextManagerCallbacks
+@@ -1178,6 +1201,24 @@ class LspServerContextManagerCallbacks
+       final lspOutline = toFlutterOutline(result.lineInfo, outline);
+       analysisServer.publishFlutterOutline(path, lspOutline);
+     }
++    if (analysisServer.shouldSendIconPreviewsFor(path)) {
++      final context = analysisServer.contextManager.getContextFor(path);
++      if (context == null) throw 'No context for $path';
++      final icons = _getIcons(result, context);
++      analysisServer.publishIconPreviews(path, icons);
++    }
++  }
++
++  List<IconInformation> _getIcons(
++      ResolvedUnitResult unit, AnalysisContext context) {
++    IconInformation toIconInformation(IconReference reference) => IconInformation(
++        data: reference.iconData.binaryContent,
++        identifier:
++            '${reference.iconData.fontFamily ?? reference.iconData.fontPackage}.${reference.iconData.codePoint}',
++        range: toRange(unit.lineInfo, reference.offset, reference.length));
++    var computer = IconPreviewComputer(unit, context);
++    var icons = computer.compute();
++    return icons.map(toIconInformation).toList();
+   }
+ 
+   @override
+diff --git a/pkg/analysis_server/lib/src/utilities/flutter.dart b/pkg/analysis_server/lib/src/utilities/flutter.dart
+index 4b83d8496a8..88697f4f853 100644
+--- a/pkg/analysis_server/lib/src/utilities/flutter.dart
++++ b/pkg/analysis_server/lib/src/utilities/flutter.dart
+@@ -310,13 +310,25 @@ class Flutter {
+   /// Return `true` if the given [type] is the dart.ui class `Color`, or its
+   /// subtype.
+   bool isColor(DartType type) {
++    return isNamedType(type, 'Color', 'dart.ui');
++  }
++
++  /// Return `true if the given [type] is the Flutter class `IconData`, used to
++  /// represent icons in the Flutter framework.
++  bool isIconData(DartType type) {
++    return isNamedType(type, 'IconData', '');
++  }
++
++  /// Return `true` if the given [type] is assignable to the type with the given
++  /// [name] in the given [package] name.
++  bool isNamedType(DartType type, String name, String package) {
+     if (type is! InterfaceType) {
+       return false;
+     }
+ 
+     bool isColorElement(InterfaceElement element) {
+       bool isExactColor(InterfaceElement element) =>
+-          element.name == 'Color' && element.library.name == 'dart.ui';
++          element.name == name && element.library.name == package;
+ 
+       if (isExactColor(element)) {
+         return true;
+diff --git a/pkg/analysis_server/pubspec.yaml b/pkg/analysis_server/pubspec.yaml
+index fa70ec81466..c903af0ef58 100644
+--- a/pkg/analysis_server/pubspec.yaml
++++ b/pkg/analysis_server/pubspec.yaml
+@@ -15,6 +15,7 @@ dependencies:
+   convert: any
+   crypto: any
+   dart_style: any
++  ffi: any
+   http: any
+   leak_tracker: any
+   linter: any
+diff --git a/pkg/analysis_server/tool/lsp_spec/generate_all.dart b/pkg/analysis_server/tool/lsp_spec/generate_all.dart
+index f06774a0e6c..e113562cc8c 100644
+--- a/pkg/analysis_server/tool/lsp_spec/generate_all.dart
++++ b/pkg/analysis_server/tool/lsp_spec/generate_all.dart
+@@ -28,21 +28,26 @@ Future<void> main(List<String> arguments) async {
+   // Collect definitions for types in the model and our custom extensions.
+   final specTypes = await getSpecClasses(args);
+   final customTypes = getCustomClasses();
++  final iconPreviewSpecTypes = getIconPreviewSpecClasses();
+ 
+   // Record both sets of types in dictionaries for faster lookups, but also so
+   // they can reference each other and we can find the definitions during
+   // codegen.
+   recordTypes(specTypes);
+   recordTypes(customTypes);
++  recordTypes(iconPreviewSpecTypes);
+ 
+   // Generate formatted Dart code (as a string) for each set of types.
+   final specTypesOutput = generateDartForTypes(specTypes);
+   final customTypesOutput = generateDartForTypes(customTypes);
++  final iconPreviewTypesOutput = generateDartForTypes(iconPreviewSpecTypes);
+ 
+   File(path.join(outFolder, 'protocol_generated.dart')).writeAsStringSync(
+       generatedFileHeader(2018, importCustom: true) + specTypesOutput);
+   File(path.join(outFolder, 'protocol_custom_generated.dart'))
+       .writeAsStringSync(generatedFileHeader(2019) + customTypesOutput);
++  File(path.join(outFolder, 'protocol_icon_preview_generated.dart'))
++      .writeAsStringSync(generatedFileHeader(2023) + iconPreviewTypesOutput);
+ }
+ 
+ const argDownload = 'download';
+@@ -63,6 +68,9 @@ final String localLicensePath = path.join(
+ final String localSpecPath = path.join(
+     path.dirname(Platform.script.toFilePath()), 'lsp_meta_model.json');
+ 
++final String localIconPreviewSpecPath = path.join(
++    path.dirname(Platform.script.toFilePath()), 'lsp_icon_previews_model.json');
++
+ final Uri specLicenseUri = Uri.parse(
+     'https://microsoft.github.io/language-server-protocol/License.txt');
+ 
+@@ -503,6 +511,14 @@ Future<List<LspEntity>> getSpecClasses(ArgResults args) async {
+   return model.types;
+ }
+ 
++List<LspEntity> getIconPreviewSpecClasses() {
++  final file = File(localIconPreviewSpecPath);
++  var model = LspMetaModelReader().readFile(file);
++  model = LspMetaModelCleaner().cleanModel(model);
++
++  return model.types;
++}
++
+ class AbstractGetter extends Member {
+   // ignore:unreachable_from_main
+   final TypeBase type;
+diff --git a/pkg/analysis_server/tool/lsp_spec/generate_icon_previews.dart b/pkg/analysis_server/tool/lsp_spec/generate_icon_previews.dart
+new file mode 100644
+index 00000000000..571d9d0e366
+--- /dev/null
++++ b/pkg/analysis_server/tool/lsp_spec/generate_icon_previews.dart
+@@ -0,0 +1,55 @@
++// Copyright (c) 2023, the Dart project authors. Please see the AUTHORS file
++// for details. All rights reserved. Use of this source code is governed by a
++// BSD-style license that can be found in the LICENSE file.
++
++import 'dart:io';
++
++import 'package:path/path.dart' as path;
++
++import 'codegen_dart.dart';
++import 'generate_all.dart';
++
++Future<void> main(List<String> arguments) async {
++  final args = argParser.parse(arguments);
++  var help = args[argHelp] as bool;
++  if (help) {
++    print(argParser.usage);
++    return;
++  }
++
++  final script = Platform.script.toFilePath();
++  // 3x parent = file -> lsp_spec -> tool -> analysis_server.
++  final packageFolder = File(script).parent.parent.parent.path;
++  final outFolder = path.join(packageFolder, 'lib', 'lsp_protocol');
++  Directory(outFolder).createSync();
++
++  // Collect definitions for types in the model and our custom extensions.
++  final specTypes = await getSpecClasses(args);
++  final customTypes = getCustomClasses();
++  final iconPreviewSpecTypes = getIconPreviewSpecClasses();
++
++  // Record both sets of types in dictionaries for faster lookups, but also so
++  // they can reference each other and we can find the definitions during
++  // codegen.
++  recordTypes(specTypes);
++  recordTypes(customTypes);
++  recordTypes(iconPreviewSpecTypes);
++
++  final iconPreviewTypesOutput = generateDartForTypes(iconPreviewSpecTypes);
++
++  File(path.join(outFolder, 'protocol_icon_preview_generated.dart'))
++      .writeAsStringSync(generatedCustomHeader() + iconPreviewTypesOutput);
++}
++
++String generatedCustomHeader() {
++  var decl = "const jsonEncoder = JsonEncoder.withIndent('    ');";
++  var base = generatedFileHeader(2023);
++  base = base.substring(0, base.length - (decl.length + 2));
++  var header = '''
++$base
++import 'package:analysis_server/lsp_protocol/protocol_custom_generated.dart';
++
++$decl
++''';
++  return header;
++}
+diff --git a/pkg/analysis_server/tool/lsp_spec/lsp_icon_previews_model.json b/pkg/analysis_server/tool/lsp_spec/lsp_icon_previews_model.json
+new file mode 100644
+index 00000000000..552db67c5b5
+--- /dev/null
++++ b/pkg/analysis_server/tool/lsp_spec/lsp_icon_previews_model.json
+@@ -0,0 +1,124 @@
++{
++  "notifications": [
++		{
++			"method": "dart/textDocument/publishIconPreviews",
++			"messageDirection": "serverToClient",
++			"params": {
++				"kind": "reference",
++				"name": "PublishIconPreviewParams"
++			},
++			"documentation": "The `dart/textDocument/publishIconPreviews` notification is sent from the server to the client after a file has been resolved."
++    }
++  ],
++  "structures": [
++    {
++      "name": "PublishIconPreviewParams",
++      "properties": [
++        {
++          "name": "uri",
++          "type": {
++            "kind": "base",
++            "name": "URI"
++          },
++          "documentation": "The URI of the file being analyzed."
++        },
++        {
++          "name": "icons",
++          "type": {
++            "kind": "array",
++            "element": {
++              "kind": "reference",
++              "name": "IconInformation"
++            }
++          },
++          "documentation": "An array of IconInformation."
++        }
++      ],
++      "documentation": "An array of IconInformation specific to the given URI."
++    },
++    {
++      "name": "DocumentIconRegistrationOptions",
++      "properties": [],
++      "extends": [
++        {
++          "kind": "reference",
++          "name": "TextDocumentRegistrationOptions"
++        },
++        {
++          "kind": "reference",
++          "name": "DocumentIconOptions"
++        }
++      ],
++      "mixins": [
++        {
++          "kind": "reference",
++          "name": "StaticRegistrationOptions"
++        }
++      ]
++    },
++    {
++      "name": "DocumentIconOptions",
++      "properties": [],
++      "mixins": [
++        {
++          "kind": "reference",
++          "name": "WorkDoneProgressOptions"
++        }
++      ]
++    },
++    {
++      "name": "DocumentIconParams",
++      "properties": [
++        {
++          "name": "textDocument",
++          "type": {
++            "kind": "reference",
++            "name": "TextDocumentIdentifier"
++          },
++          "documentation": "The text document."
++        }
++      ],
++      "mixins": [
++        {
++          "kind": "reference",
++          "name": "WorkDoneProgressParams"
++        },
++        {
++          "kind": "reference",
++          "name": "PartialResultParams"
++        }
++      ],
++      "documentation": "Parameters for a [DocumentIconRequest](#DocumentIconRequest)."
++    },
++    {
++      "name": "IconInformation",
++      "properties": [
++        {
++          "name": "range",
++          "type": {
++            "kind": "reference",
++            "name": "Range"
++          },
++          "documentation": "TODO RENAME TO 'IconIdentifier' The range in the document where this icon is referenced."
++        },
++        {
++          "name": "data",
++          "type": {
++            "kind": "base",
++            "name": "string"
++          },
++          "documentation": "TODO REMOVE THIS PROPERTY The base64-encoded data of a PNG image."
++        },
++        {
++          "name": "identifier",
++          "type": {
++            "kind": "base",
++            "name": "string"
++          },
++          "documentation": "A unique identifier for the icon, '$fontPackage.$codepoint'."
++        }
++      ],
++      "documentation": "Represents an icon from a document."
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/pkg/analyzer/lib/dart/analysis/analysis_context.dart b/pkg/analyzer/lib/dart/analysis/analysis_context.dart
+index e43c300c82d..7d1cc05c1d9 100644
+--- a/pkg/analyzer/lib/dart/analysis/analysis_context.dart
++++ b/pkg/analyzer/lib/dart/analysis/analysis_context.dart
+@@ -31,6 +31,8 @@ abstract class AnalysisContext {
+   /// analyzed, or `null` if the SDK is not directory based.
+   Folder? get sdkRoot;
+ 
++  List<IconPackage> get potenitialIconPackages => [];
++
+   /// Return a [Future] that completes after pending file changes are applied,
+   /// so that [currentSession] can be used to compute results.
+   ///
+@@ -59,3 +61,10 @@ abstract class AnalysisContext {
+   /// ```
+   void changeFile(String path);
+ }
++
++abstract class IconPackage {
++  String get name;
++  String get path;
++  Map<String, List<String>> get families;
++  bool get isEmpty;
++}
+diff --git a/pkg/analyzer/lib/src/dart/analysis/driver_based_analysis_context.dart b/pkg/analyzer/lib/src/dart/analysis/driver_based_analysis_context.dart
+index 5eeaae4a63c..1218a1576fb 100644
+--- a/pkg/analyzer/lib/src/dart/analysis/driver_based_analysis_context.dart
++++ b/pkg/analyzer/lib/src/dart/analysis/driver_based_analysis_context.dart
+@@ -21,6 +21,15 @@ class DriverBasedAnalysisContext implements AnalysisContext {
+   /// The driver on which this context is based.
+   late final AnalysisDriver driver;
+ 
++  List<IconPackage> _potenitialIconPackages = [];
++
++  set potenitialIconPackages(List<IconPackage> packages) {
++    _potenitialIconPackages = packages;
++  }
++
++  @override
++  List<IconPackage> get potenitialIconPackages => _potenitialIconPackages;
++
+   /// Initialize a newly created context that uses the given [resourceProvider]
+   /// to access the file system and that is based on the given analysis
+   /// [driver].
+@@ -56,3 +65,27 @@ class DriverBasedAnalysisContext implements AnalysisContext {
+     driver.changeFile(path);
+   }
+ }
++
++class IconPackageImpl extends IconPackage {
++  final String _name;
++  final String _path;
++  final Map<String, List<String>> _families = {};
++
++  IconPackageImpl(this._name, this._path);
++
++  @override
++  String get name => _name;
++  @override
++  String get path => _path;
++  @override
++  Map<String, List<String>> get families => _families;
++  @override
++  bool get isEmpty => families.isEmpty;
++
++  void addFamily(String family, List<String> assets) {
++    _families[family] = assets;
++  }
++
++  @override
++  String toString() => 'IconPackage($name)';
++}

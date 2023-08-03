@@ -1,4 +1,8 @@
 {
   "cmake.configureOnOpen": true,
-  "cmake.sourceDirectory": "/Users/messick/src/icon-gen"
+  "cmake.sourceDirectory": "/Users/messick/src/icon-gen",
+  "files.associations": {
+    "__config": "cpp",
+    "__nullptr": "cpp"
+  }
 }
