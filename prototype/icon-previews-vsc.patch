@@ -1,0 +1,247 @@
+diff --git a/.gitignore b/.gitignore
+index a10b7be9..ee335079 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -20,3 +20,4 @@ node_modules/
+ out/
+ pubspec.lock
+ Generated.xcconfig
++media/icon-previews
+diff --git a/package-lock.json b/package-lock.json
+index fc409385..5ddd48e3 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -16,7 +16,7 @@
+ 				"vscode-languageclient": "^8.0.2",
+ 				"vscode-uri": "^3.0.7",
+ 				"ws": "^8.11.0",
+-				"yaml": "^2.2.2"
++				"yaml": "^2.3.1"
+ 			},
+ 			"devDependencies": {
+ 				"@types/glob": "^8.0.0",
+@@ -5599,9 +5599,9 @@
+ 			"integrity": "sha512-3wdGidZyq5PB084XLES5TpOSRA3wjXAlIWMhum2kRcv/41Sn2emQ0dycQW4uZXLejwKvg6EsvbdlVL+FYEct7A=="
+ 		},
+ 		"node_modules/yaml": {
+-			"version": "2.2.2",
+-			"resolved": "https://registry.npmjs.org/yaml/-/yaml-2.2.2.tgz",
+-			"integrity": "sha512-CBKFWExMn46Foo4cldiChEzn7S7SRV+wqiluAb6xmueD/fGyRHIhX8m14vVGgeFWjN540nKCNVj6P21eQjgTuA==",
++			"version": "2.3.1",
++			"resolved": "https://registry.npmjs.org/yaml/-/yaml-2.3.1.tgz",
++			"integrity": "sha512-2eHWfjaoXgTBC2jNM1LRef62VQa0umtvRiDSk6HSzW7RvS5YtkabJrwYLLEKWBc8a5U2PTSCs+dJjUTJdlHsWQ==",
+ 			"engines": {
+ 				"node": ">= 14"
+ 			}
+@@ -9875,9 +9875,9 @@
+ 			"integrity": "sha512-3wdGidZyq5PB084XLES5TpOSRA3wjXAlIWMhum2kRcv/41Sn2emQ0dycQW4uZXLejwKvg6EsvbdlVL+FYEct7A=="
+ 		},
+ 		"yaml": {
+-			"version": "2.2.2",
+-			"resolved": "https://registry.npmjs.org/yaml/-/yaml-2.2.2.tgz",
+-			"integrity": "sha512-CBKFWExMn46Foo4cldiChEzn7S7SRV+wqiluAb6xmueD/fGyRHIhX8m14vVGgeFWjN540nKCNVj6P21eQjgTuA=="
++			"version": "2.3.1",
++			"resolved": "https://registry.npmjs.org/yaml/-/yaml-2.3.1.tgz",
++			"integrity": "sha512-2eHWfjaoXgTBC2jNM1LRef62VQa0umtvRiDSk6HSzW7RvS5YtkabJrwYLLEKWBc8a5U2PTSCs+dJjUTJdlHsWQ=="
+ 		},
+ 		"yargs": {
+ 			"version": "16.2.0",
+diff --git a/package.json b/package.json
+index ac8690fb..913a1657 100644
+--- a/package.json
++++ b/package.json
+@@ -2334,7 +2334,6 @@
+ 							"type": "string"
+ 						}
+ 					},
+-
+ 					"dart.customDartDapPath": {
+ 						"type": [
+ 							"null",
+@@ -2912,9 +2911,9 @@
+ 		"minimatch": "^5.1.2",
+ 		"semver": "^7.3.8",
+ 		"vscode-languageclient": "^8.0.2",
++		"vscode-uri": "^3.0.7",
+ 		"ws": "^8.11.0",
+-		"yaml": "^2.2.2",
+-		"vscode-uri": "^3.0.7"
++		"yaml": "^2.3.1"
+ 	},
+ 	"devDependencies": {
+ 		"@types/glob": "^8.0.0",
+diff --git a/src/extension/decorations/icon_preview_decorations.ts b/src/extension/decorations/icon_preview_decorations.ts
+new file mode 100644
+index 00000000..9056e169
+--- /dev/null
++++ b/src/extension/decorations/icon_preview_decorations.ts
+@@ -0,0 +1,109 @@
++import * as vs from "vscode";
++import { integer } from "vscode-languageclient";
++import { IconInformation, IconPreviewParams, PublishIconPreviewsNotification } from "../../shared/analysis/lsp/custom_protocol";
++import { Logger } from "../../shared/interfaces";
++import { disposeAll } from "../../shared/utils";
++import { fsPath } from "../../shared/utils/fs";
++import { docsIconPreviewDirPath } from "../../shared/vscode/extension_utils";
++import { LspAnalyzer } from "../analysis/analyzer_lsp";
++
++export class LspIconPreviewDecorations implements vs.Disposable {
++	private subscriptions: vs.Disposable[] = [];
++	private iconPreviews: { [key: string]: IconPreviewParams } = {};
++	private editors: { [key: string]: vs.TextEditor } = {};
++	private decorationTypes: { [key: string]: vs.TextEditorDecorationType } = {};
++	private updateTimeout?: NodeJS.Timer;
++
++
++	constructor(private logger: Logger, private readonly analyzer: LspAnalyzer) {
++		this.analyzer.client.onNotification(PublishIconPreviewsNotification.type, (n) => {
++			const filePath = fsPath(vs.Uri.parse(n.uri));
++			this.iconPreviews[filePath] = n;
++			this.updateEditorFor(filePath);
++		});
++		this.subscriptions.push(vs.window.onDidChangeActiveTextEditor((e) => this.update()));
++		this.subscriptions.push(vs.workspace.onDidCloseTextDocument((td) => {
++			const filePath = fsPath(td.uri);
++			delete this.iconPreviews[filePath];
++		}));
++		this.update();
++	}
++
++	private async update() {
++		const editor = vs.window.activeTextEditor;
++		if (!editor || !editor.document)
++			return;
++
++		const filePath = fsPath(editor.document.uri);
++		const iconPreviews = this.iconPreviews[filePath];
++		if (!iconPreviews || !iconPreviews.icons) {
++			return;
++		}
++		const icons = iconPreviews.icons;
++		for (const icon of icons) {
++			if (!this.decorationTypes[icon.identifier]) {
++				this.decorationTypes[icon.identifier] = await this.makeIcon(icon);
++			}
++		}
++		for (const iconName of Object.keys(this.decorationTypes)) {
++			const range: vs.Range[] = this.rangeOf(iconName, icons);
++			editor.setDecorations(this.decorationTypes[iconName], range);
++		}
++	}
++
++	private rangeOf(iconName: string, icons: IconInformation[]): vs.Range[] {
++		for (const icon of icons) {
++			if (iconName === icon.identifier) {
++				return [this.analyzer.client.protocol2CodeConverter.asRange(icon.range)];
++			}
++		}
++		return [];
++	}
++
++	private async makeIcon(icon: IconInformation): Promise<vs.TextEditorDecorationType> {
++		const path = vs.Uri.parse(docsIconPreviewDirPath.replace("$1", icon.identifier));
++		const decode = (str: string): string => Buffer.from(str, "base64").toString("binary");
++
++		const data = decode(icon.data);
++		const buffer = Buffer.allocUnsafe(data.length);
++		for (let i = 0; i < data.length; i++) {
++			buffer.writeUint8(data.charCodeAt(i), i);
++		}
++		await vs.workspace.fs.writeFile(path, buffer);
++		return vs.window.createTextEditorDecorationType({
++			gutterIconPath: path,
++			gutterIconSize: "75%",
++		});
++	}
++
++	private updateEditorFor(filePath: string) {
++		// Fire an update if it was for the active document.
++		if (vs.window.activeTextEditor
++			&& vs.window.activeTextEditor.document
++			&& filePath === fsPath(vs.window.activeTextEditor.document.uri)) {
++			// Delay this so if we're getting lots of updates we don't flicker.
++			if (this.updateTimeout)
++				clearTimeout(this.updateTimeout);
++			this.updateTimeout = setTimeout(() => this.update(), 500);
++		}
++	}
++
++	public dispose() {
++		for (const editor of Object.values(this.editors)) {
++			for (const decorationType of Object.values(this.decorationTypes)) {
++				try {
++					editor.setDecorations(decorationType, []);
++				} catch {
++					console.error("empty catch block");
++					// It's possible the editor was closed, but there
++					// doesn't seem to be a way to tell.
++				}
++			}
++		}
++		disposeAll(this.subscriptions);
++		this.editors.clear;
++		this.decorationTypes.clear;
++		this.subscriptions = [];
++	}
++
++}
+diff --git a/src/extension/extension.ts b/src/extension/extension.ts
+index f4174d6b..4c95faa5 100644
+--- a/src/extension/extension.ts
++++ b/src/extension/extension.ts
+@@ -110,6 +110,7 @@ import { promptToReloadExtension } from "./utils";
+ import { addToLogHeader, clearLogHeader, getExtensionLogPath, getLogHeader } from "./utils/log";
+ import { safeToolSpawn } from "./utils/processes";
+ import { DartPackagesProvider } from "./views/packages_view";
++import { LspIconPreviewDecorations } from "./decorations/icon_preview_decorations";
+ 
+ const PROJECT_LOADED = "dart-code:anyProjectLoaded";
+ const DART_PROJECT_LOADED = "dart-code:anyStandardDartProjectLoaded";
+@@ -380,8 +381,10 @@ export async function activate(context: vs.ExtensionContext, isRestart: boolean
+ 	// Set up providers.
+ 	// TODO: Do we need to push all these to subscriptions?!
+ 
+-	if (lspClient)
++	if (lspClient) {
+ 		context.subscriptions.push(new LspClosingLabelsDecorations(lspClient));
++		context.subscriptions.push(new LspIconPreviewDecorations(logger, analyzer as LspAnalyzer));
++	}
+ 
+ 	const completionItemProvider = isUsingLsp || !dasClient ? undefined : new DartCompletionItemProvider(logger, dasClient);
+ 	const referenceProvider = isUsingLsp || !dasClient || !dasAnalyzer ? undefined : new DartReferenceProvider(dasClient, dasAnalyzer.fileTracker);
+diff --git a/src/shared/analysis/lsp/custom_protocol.ts b/src/shared/analysis/lsp/custom_protocol.ts
+index 1be36ab7..7d6f332d 100644
+--- a/src/shared/analysis/lsp/custom_protocol.ts
++++ b/src/shared/analysis/lsp/custom_protocol.ts
+@@ -97,3 +97,18 @@ export interface Element {
+ 	readonly typeParameters?: string;
+ 	readonly returnType?: string;
+ }
++
++export class PublishIconPreviewsNotification {
++	public static type = new NotificationType<IconPreviewParams>("dart/textDocument/publishIconPreviews");
++}
++
++export interface IconPreviewParams {
++	readonly uri: string; // path to the file that contains icons
++	readonly icons?: IconInformation[];
++}
++
++export interface IconInformation {
++	readonly data: string; // base64 encoded PNG data
++	readonly identifier: string; // unique identifier
++	readonly range: Range;
++}
+diff --git a/src/shared/vscode/extension_utils.ts b/src/shared/vscode/extension_utils.ts
+index 5388b628..37c46f75 100644
+--- a/src/shared/vscode/extension_utils.ts
++++ b/src/shared/vscode/extension_utils.ts
+@@ -11,6 +11,8 @@ export const isPreReleaseExtension = checkIsPreReleaseExtension();
+ export const isDevExtension = checkIsDevExtension();
+ export const hasFlutterExtension = checkHasFlutterExtension();
+ export const docsIconPathFormat = Uri.file(path.join(extensionPath, "media/doc-icons/")).toString() + "$1%402x.png";
++export const docsIconPreviewDirPath = Uri.file(path.join(extensionPath, "media/icon-previews/")).toString() + "$1.png";
++// TODO(messick) Make the previous path use: path.join(context.globalStoragePath, "icon-previews")
+ 
+ export function readJson(file: string): any {
+ 	return JSON.parse(fs.readFileSync(file).toString());
